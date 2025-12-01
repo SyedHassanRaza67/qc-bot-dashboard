@@ -20,7 +20,7 @@ export const Header = ({ onSearch, autoRefresh, onAutoRefreshToggle }: HeaderPro
     <header className="bg-card border-b border-border p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Welcome Back HLG!</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Welcome to AI Audio Analyzer</h1>
           <p className="text-muted-foreground">Track, Manage, and Analyze Leads with AI QC Bots</p>
         </div>
         
