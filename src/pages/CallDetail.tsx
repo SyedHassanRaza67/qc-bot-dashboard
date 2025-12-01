@@ -3,51 +3,61 @@ import { ArrowLeft, Download, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState } from "react";
+import { useCallRecord } from "@/hooks/useCallRecords";
 
 const CallDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Mock data - replace with actual API call based on id
-  const record = {
-    id: id,
-    timestamp: "2025-12-01 10:30:15",
-    callerId: "+1234567890",
-    campaignName: "Summer Campaign",
-    publisher: "Publisher A",
-    duration: "5:34",
-    status: "sale",
-    agentName: "John Doe",
-    subDisposition: "Interested",
-    reason: "Qualified lead with high intent to purchase",
-    summary: "Customer expressed strong interest in product features and pricing. Asked detailed questions about warranty and delivery options. Ready to proceed with purchase pending final budget approval.",
-    systemCallId: "SYS-2025-001234",
-    publisherId: "PUB-A-789",
-    buyerId: "BUY-X-456",
-    recordingUrl: "#",
-    transcript: `Agent: Good morning! Thank you for calling. My name is John. How can I help you today?
+  const { data: record, isLoading } = useCallRecord(id || '');
 
-Customer: Hi John, I'm interested in learning more about your solar panel installation services.
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="bg-card border-b border-border p-6">
+          <div className="max-w-7xl mx-auto">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate(-1)}
+              className="mb-4 hover:bg-muted"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-3xl font-bold">Loading...</h1>
+          </div>
+        </header>
+        <main className="max-w-7xl mx-auto p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-32 bg-muted rounded-lg"></div>
+            <div className="h-32 bg-muted rounded-lg"></div>
+            <div className="h-32 bg-muted rounded-lg"></div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
-Agent: Excellent! I'd be happy to help you with that. Can you tell me a bit about your property and what prompted your interest in solar energy?
-
-Customer: Sure, I have a 2000 square foot home, and I'm looking to reduce my electricity bills. I've heard solar can really help with that.
-
-Agent: Absolutely, solar panels can significantly reduce your energy costs. Based on your home size, we typically recommend a 6-8 kW system. This could reduce your electricity bill by 70-90%. 
-
-Customer: That sounds great! What about the installation process and warranty?
-
-Agent: The installation typically takes 1-2 days, and we provide a 25-year warranty on the panels and a 10-year warranty on the installation work. We also handle all the paperwork for government rebates and incentives.
-
-Customer: Perfect. I need to discuss this with my spouse, but I'm very interested. Can we schedule a follow-up call for next week?
-
-Agent: Of course! I'll send you our information package via email, and we can schedule a call for next Tuesday at 2 PM. Does that work for you?
-
-Customer: Yes, that works perfectly. Thank you so much for your time, John!
-
-Agent: My pleasure! Have a great day, and I look forward to speaking with you next week.`,
-  };
+  if (!record) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="bg-card border-b border-border p-6">
+          <div className="max-w-7xl mx-auto">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate(-1)}
+              className="mb-4 hover:bg-muted"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-3xl font-bold">Record Not Found</h1>
+          </div>
+        </header>
+      </div>
+    );
+  }
 
   const getStatusColor = (status: string) => {
     const colors = {
