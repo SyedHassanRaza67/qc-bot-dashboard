@@ -7,36 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Process base64 in chunks to prevent memory issues
-function processBase64Chunks(base64String: string, chunkSize = 32768) {
-  const chunks: Uint8Array[] = [];
-  let position = 0;
-  
-  while (position < base64String.length) {
-    const chunk = base64String.slice(position, position + chunkSize);
-    const binaryChunk = atob(chunk);
-    const bytes = new Uint8Array(binaryChunk.length);
-    
-    for (let i = 0; i < binaryChunk.length; i++) {
-      bytes[i] = binaryChunk.charCodeAt(i);
-    }
-    
-    chunks.push(bytes);
-    position += chunkSize;
-  }
-
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return result;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -51,48 +21,22 @@ serve(async (req) => {
 
     console.log('Processing audio file:', fileName);
 
-    // Process audio in chunks
-    const binaryAudio = processBase64Chunks(audio);
-    
-    // Prepare form data for Whisper API
-    const formData = new FormData();
-    const blob = new Blob([binaryAudio], { type: 'audio/webm' });
-    formData.append('file', blob, fileName || 'audio.webm');
-    formData.append('model', 'whisper-1');
-    formData.append('response_format', 'verbose_json');
+    // Use Lovable AI (Gemini) for transcription and analysis
+    const analysisPrompt = `You are an expert audio transcription and call analysis AI. 
 
-    console.log('Sending to OpenAI Whisper API...');
-
-    // Send to OpenAI Whisper
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
-      throw new Error(`OpenAI API error: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log('Transcription completed');
-
-    // Analyze the transcript using Lovable AI
-    const analysisPrompt = `Analyze this call transcript and provide:
-1. Call status (sale, callback, not-interested, disqualified, or pending)
-2. Agent name (if mentioned)
-3. Sub-disposition (brief category)
-4. Reason for the status
-5. A concise summary (1-2 sentences)
-6. Campaign name (if mentioned, otherwise generate a relevant one)
-7. Publisher name (if mentioned, otherwise generate one like "Publisher A")
+Please analyze this audio file and provide:
+1. A full transcription of the audio
+2. Call status (sale, callback, not-interested, disqualified, or pending)
+3. Agent name (if mentioned)
+4. Sub-disposition (brief category)
+5. Reason for the status
+6. A concise summary (1-2 sentences)
+7. Campaign name (if mentioned, otherwise generate a relevant one)
+8. Publisher name (if mentioned, otherwise generate one like "Publisher A")
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
 {
+  "transcript": "full transcription of the audio",
   "status": "sale|callback|not-interested|disqualified|pending",
   "agentName": "agent name or null",
   "subDisposition": "brief category",
@@ -100,13 +44,11 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
   "summary": "concise summary",
   "campaignName": "campaign name",
   "publisher": "publisher name"
-}
+}`;
 
-Transcript: ${result.text}`;
+    console.log('Sending to Lovable AI for transcription and analysis...');
 
-    console.log('Analyzing transcript with AI...');
-
-    const analysisResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`,
@@ -115,23 +57,45 @@ Transcript: ${result.text}`;
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: 'You are an expert call analyzer. Always return valid JSON only, no markdown formatting.' },
-          { role: 'user', content: analysisPrompt }
+          { 
+            role: 'system', 
+            content: 'You are an expert audio transcription and call analysis AI. Always return valid JSON only, no markdown formatting.' 
+          },
+          { 
+            role: 'user', 
+            content: [
+              { type: 'text', text: analysisPrompt },
+              { 
+                type: 'image_url', 
+                image_url: { 
+                  url: `data:audio/webm;base64,${audio}` 
+                } 
+              }
+            ]
+          }
         ],
       }),
     });
 
-    if (!analysisResponse.ok) {
-      const errorText = await analysisResponse.text();
-      console.error('AI analysis error:', errorText);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Lovable AI error:', response.status, errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      }
+      if (response.status === 402) {
+        throw new Error('Payment required. Please add credits to your Lovable workspace.');
+      }
       throw new Error(`AI analysis error: ${errorText}`);
     }
 
-    const analysisData = await analysisResponse.json();
+    const analysisData = await response.json();
     let analysis;
     
     try {
       const content = analysisData.choices[0].message.content;
+      console.log('AI Response:', content);
       // Remove markdown code blocks if present
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysis = JSON.parse(jsonStr);
@@ -139,11 +103,12 @@ Transcript: ${result.text}`;
       console.error('Failed to parse AI response:', e);
       // Fallback values
       analysis = {
+        transcript: 'Transcription failed - please try again',
         status: 'pending',
         agentName: null,
         subDisposition: 'Requires Review',
         reason: 'Automated analysis pending',
-        summary: result.text.substring(0, 200),
+        summary: 'Audio processing encountered an issue',
         campaignName: 'General Campaign',
         publisher: 'Publisher A'
       };
@@ -180,7 +145,7 @@ Transcript: ${result.text}`;
         system_call_id: systemCallId,
         publisher_id: publisherId,
         buyer_id: buyerId,
-        transcript: result.text,
+        transcript: analysis.transcript,
         audio_file_name: fileName,
       })
       .select()
@@ -197,7 +162,7 @@ Transcript: ${result.text}`;
       JSON.stringify({ 
         success: true,
         record: record,
-        transcript: result.text,
+        transcript: analysis.transcript,
         analysis: analysis
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
