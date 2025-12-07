@@ -99,16 +99,12 @@ const CallDetail = () => {
                 <div className="font-mono font-medium">{record.timestamp}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Caller ID</div>
-                <div className="font-mono font-medium">{record.callerId}</div>
-              </div>
-              <div>
                 <div className="text-sm text-muted-foreground">Campaign</div>
                 <div className="font-medium">{record.campaignName}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Publisher</div>
-                <div className="font-medium">{record.publisher}</div>
+                <div className="text-sm text-muted-foreground">Publisher ID</div>
+                <div className="font-mono font-medium">{record.publisherId}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Duration</div>

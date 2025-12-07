@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Play, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -13,8 +13,6 @@ import {
 interface CallRecord {
   id: string;
   timestamp: string;
-  publisher: string;
-  callerId: string;
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
   agentName?: string;
   subDisposition: string;
@@ -80,9 +78,8 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
       <Table>
         <TableHeader className="table-header">
           <TableRow>
+            <TableHead className="font-semibold uppercase text-xs w-16">Sr. No.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Timestamp</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Publisher</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Caller ID</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Status</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Sub-Disposition</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Duration</TableHead>
@@ -99,9 +96,8 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
               className={`table-row cursor-pointer ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
               onClick={() => navigate(`/record/${record.id}`)}
             >
+              <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
-              <TableCell>{record.publisher}</TableCell>
-              <TableCell className="font-mono">{record.callerId}</TableCell>
               <TableCell>
                 <div className="space-y-1">
                   {getStatusBadge(record.status)}

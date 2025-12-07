@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { startOfDay, startOfWeek, startOfMonth, subDays } from "date-fns";
 
 export interface CallRecord {
   id: string;
   timestamp: string;
-  publisher: string;
-  callerId: string;
+  rawTimestamp: Date;
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
   agentName?: string;
   subDisposition: string;
@@ -20,14 +20,44 @@ export interface CallRecord {
   transcript: string;
 }
 
-export const useCallRecords = () => {
+export type DateFilter = 'today' | 'yesterday' | 'week' | 'month';
+
+export const useCallRecords = (dateFilter?: DateFilter) => {
   return useQuery({
-    queryKey: ['call-records'],
+    queryKey: ['call-records', dateFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('call_records')
         .select('*')
         .order('timestamp', { ascending: false });
+
+      // Apply date filter
+      if (dateFilter) {
+        const now = new Date();
+        let startDate: Date;
+
+        switch (dateFilter) {
+          case 'today':
+            startDate = startOfDay(now);
+            break;
+          case 'yesterday':
+            startDate = startOfDay(subDays(now, 1));
+            query = query.lt('timestamp', startOfDay(now).toISOString());
+            break;
+          case 'week':
+            startDate = startOfWeek(now, { weekStartsOn: 1 });
+            break;
+          case 'month':
+            startDate = startOfMonth(now);
+            break;
+          default:
+            startDate = startOfDay(now);
+        }
+
+        query = query.gte('timestamp', startDate.toISOString());
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching call records:', error);
@@ -37,8 +67,7 @@ export const useCallRecords = () => {
       return (data || []).map((record) => ({
         id: record.id,
         timestamp: new Date(record.timestamp).toLocaleString(),
-        publisher: record.publisher,
-        callerId: record.caller_id,
+        rawTimestamp: new Date(record.timestamp),
         status: record.status as CallRecord['status'],
         agentName: record.agent_name || undefined,
         subDisposition: record.sub_disposition,
@@ -76,8 +105,7 @@ export const useCallRecord = (id: string) => {
       return {
         id: data.id,
         timestamp: new Date(data.timestamp).toLocaleString(),
-        publisher: data.publisher,
-        callerId: data.caller_id,
+        rawTimestamp: new Date(data.timestamp),
         status: data.status as CallRecord['status'],
         agentName: data.agent_name || undefined,
         subDisposition: data.sub_disposition,

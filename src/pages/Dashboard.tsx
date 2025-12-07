@@ -13,19 +13,20 @@ import {
 import { StatsGrid } from "@/components/StatsGrid";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
-import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
+import { useCallRecords, useCallStats, DateFilter } from "@/hooks/useCallRecords";
 
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
 
-  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords();
+  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateFilter);
   const { data: stats } = useCallStats();
 
   const filteredRecords = records.filter(record => 
     searchQuery === "" || 
-    record.callerId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    record.systemCallId.toLowerCase().includes(searchQuery.toLowerCase())
+    record.systemCallId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    record.campaignName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -47,7 +48,7 @@ const Dashboard = () => {
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by Caller ID or System Call ID..."
+              placeholder="Search by Campaign or System Call ID..."
               className="pl-10 rounded-xl"
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -63,7 +64,7 @@ const Dashboard = () => {
               <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
             </Button>
             
-            <Select defaultValue="today">
+            <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as DateFilter)}>
               <SelectTrigger className="w-[140px] rounded-xl">
                 <Calendar className="h-4 w-4 mr-2" />
                 <SelectValue />
