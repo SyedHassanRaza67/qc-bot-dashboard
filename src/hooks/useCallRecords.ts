@@ -20,21 +20,22 @@ export interface CallRecord {
   transcript: string;
 }
 
-export type DateFilter = 'today' | 'yesterday' | 'week' | 'month';
+export type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
 
-export const useCallRecords = (dateFilter?: DateFilter) => {
+export const useCallRecords = (dateFilter?: DateFilter, statusFilter?: string) => {
   return useQuery({
-    queryKey: ['call-records', dateFilter],
+    queryKey: ['call-records', dateFilter, statusFilter],
     queryFn: async () => {
       let query = supabase
         .from('call_records')
         .select('*')
         .order('timestamp', { ascending: false });
 
-      // Apply date filter
-      if (dateFilter) {
+      // Apply date filter (skip if 'all' or undefined)
+      if (dateFilter && dateFilter !== 'all') {
         const now = new Date();
         let startDate: Date;
+        let endDate: Date | null = null;
 
         switch (dateFilter) {
           case 'today':
@@ -42,7 +43,7 @@ export const useCallRecords = (dateFilter?: DateFilter) => {
             break;
           case 'yesterday':
             startDate = startOfDay(subDays(now, 1));
-            query = query.lt('timestamp', startOfDay(now).toISOString());
+            endDate = startOfDay(now);
             break;
           case 'week':
             startDate = startOfWeek(now, { weekStartsOn: 1 });
@@ -55,6 +56,14 @@ export const useCallRecords = (dateFilter?: DateFilter) => {
         }
 
         query = query.gte('timestamp', startDate.toISOString());
+        if (endDate) {
+          query = query.lt('timestamp', endDate.toISOString());
+        }
+      }
+
+      // Apply status filter
+      if (statusFilter && statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
       }
 
       const { data, error } = await query;
