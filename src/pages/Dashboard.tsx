@@ -18,9 +18,10 @@ import { useCallRecords, useCallStats, DateFilter } from "@/hooks/useCallRecords
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateFilter);
+  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateFilter, statusFilter);
   const { data: stats } = useCallStats();
 
   const filteredRecords = records.filter(record => 
@@ -70,6 +71,7 @@ const Dashboard = () => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="yesterday">Yesterday</SelectItem>
                 <SelectItem value="week">This Week</SelectItem>
@@ -86,6 +88,8 @@ const Dashboard = () => {
         <StatsGrid stats={stats} />
         
         <CampaignFilters
+          statusFilter={statusFilter}
+          onStatusFilter={setStatusFilter}
           autoRefresh={autoRefresh}
           onAutoRefreshToggle={() => setAutoRefresh(!autoRefresh)}
         />
