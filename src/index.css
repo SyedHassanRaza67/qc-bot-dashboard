@@ -58,25 +58,25 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 220 13% 9%;
-    --foreground: 220 13% 98%;
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
 
-    --card: 220 13% 11%;
-    --card-foreground: 220 13% 98%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 220 13% 11%;
-    --popover-foreground: 220 13% 98%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
 
     --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 13% 15%;
-    --secondary-foreground: 220 13% 98%;
+    --secondary: 222 47% 12%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 220 13% 15%;
-    --muted-foreground: 220 9% 65%;
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 220 13% 15%;
+    --accent: 222 47% 14%;
     --accent-foreground: 217 91% 60%;
 
     --destructive: 0 84% 60%;
@@ -91,17 +91,17 @@ All colors MUST be HSL.
     --info: 217 91% 60%;
     --info-foreground: 0 0% 100%;
 
-    --border: 220 13% 18%;
-    --input: 220 13% 18%;
+    --border: 222 47% 16%;
+    --input: 222 47% 16%;
     --ring: 217 91% 60%;
 
-    --sidebar-background: 220 13% 9%;
-    --sidebar-foreground: 220 13% 95%;
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 40% 95%;
     --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 13% 15%;
-    --sidebar-accent-foreground: 220 13% 95%;
-    --sidebar-border: 220 13% 18%;
+    --sidebar-accent: 222 47% 12%;
+    --sidebar-accent-foreground: 210 40% 95%;
+    --sidebar-border: 222 47% 16%;
     --sidebar-ring: 217 91% 60%;
   }
 }
@@ -114,7 +114,7 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
@@ -125,7 +125,7 @@ All colors MUST be HSL.
 
 @layer components {
   .stat-card {
-    @apply bg-card border border-border rounded-lg p-4 transition-all duration-200 hover:shadow-md hover:border-primary/20;
+    @apply bg-card border border-border rounded-xl p-5 transition-all duration-200 hover:shadow-lg hover:border-primary/30;
   }
 
   .status-badge {
@@ -158,5 +158,13 @@ All colors MUST be HSL.
 
   .table-header {
     @apply bg-muted/50 border-b-2 border-border;
+  }
+
+  .glass-card {
+    @apply bg-card/50 backdrop-blur-xl border border-border rounded-2xl;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary via-info to-primary bg-clip-text text-transparent;
   }
 }
