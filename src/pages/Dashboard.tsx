@@ -88,8 +88,6 @@ const Dashboard = () => {
         <StatsGrid stats={stats} />
         
         <CampaignFilters
-          statusFilter={statusFilter}
-          onStatusFilter={setStatusFilter}
           autoRefresh={autoRefresh}
           onAutoRefreshToggle={() => setAutoRefresh(!autoRefresh)}
         />
