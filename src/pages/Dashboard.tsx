@@ -85,7 +85,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <StatsGrid stats={stats} />
+        <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={setStatusFilter} />
         
         <CampaignFilters
           autoRefresh={autoRefresh}
