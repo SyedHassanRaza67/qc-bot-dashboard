@@ -220,12 +220,12 @@ const Auth = () => {
 
             {isLogin && (
               <div className="flex justify-end">
-                <button
-                  type="button"
+                <Link
+                  to="/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
                   Forgot password?
-                </button>
+                </Link>
               </div>
             )}
 

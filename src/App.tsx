@@ -12,6 +12,9 @@ import Upload from "./pages/Upload";
 import About from "./pages/About";
 import Auth from "./pages/Auth";
 import CallDetail from "./pages/CallDetail";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +41,13 @@ const App = () => (
               } />
               <Route path="/about" element={<About />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/admin" element={
+                <ProtectedRoute>
+                  <Admin />
+                </ProtectedRoute>
+              } />
               <Route path="/record/:id" element={
                 <ProtectedRoute>
                   <CallDetail />

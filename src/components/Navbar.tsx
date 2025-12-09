@@ -1,9 +1,11 @@
-import { Link, useLocation } from "react-router-dom";
-import { AudioWaveform, Menu, X } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { AudioWaveform, Menu, X, Shield, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 const navLinks = [
   { name: "Home", path: "/" },
@@ -14,7 +16,51 @@ const navLinks = [
 
 export const Navbar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        checkAdminStatus(session.user.id);
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        setTimeout(() => checkAdminStatus(session.user.id), 0);
+      } else {
+        setIsAdmin(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkAdminStatus = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin");
+
+      setIsAdmin(data && data.length > 0);
+    } catch (error) {
+      console.error("Error checking admin status:", error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   return (
     <motion.nav
@@ -53,16 +99,41 @@ export const Navbar = () => {
                 </Link>
               );
             })}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  location.pathname === "/admin"
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                }`}
+              >
+                <Shield className="h-4 w-4" />
+                Admin
+              </Link>
+            )}
           </div>
 
           {/* Right side: Theme Toggle + Auth */}
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Link to="/auth" className="hidden md:block">
-              <Button variant="default" size="sm" className="rounded-lg">
-                Sign In
+            {user ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden md:flex items-center gap-2 rounded-lg"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
               </Button>
-            </Link>
+            ) : (
+              <Link to="/auth" className="hidden md:block">
+                <Button variant="default" size="sm" className="rounded-lg">
+                  Sign In
+                </Button>
+              </Link>
+            )}
 
             {/* Mobile menu button */}
             <button
@@ -101,11 +172,39 @@ export const Navbar = () => {
                     </Link>
                   );
                 })}
-                <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="default" className="w-full rounded-lg mt-2">
-                    Sign In
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                      location.pathname === "/admin"
+                        ? "bg-primary/20 text-primary"
+                        : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                    }`}
+                  >
+                    <Shield className="h-4 w-4" />
+                    Admin
+                  </Link>
+                )}
+                {user ? (
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-lg mt-2 flex items-center gap-2"
+                    onClick={() => {
+                      handleSignOut();
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
                   </Button>
-                </Link>
+                ) : (
+                  <Link to="/auth" onClick={() => setMobileMenuOpen(false)}>
+                    <Button variant="default" className="w-full rounded-lg mt-2">
+                      Sign In
+                    </Button>
+                  </Link>
+                )}
               </div>
             </motion.div>
           )}
