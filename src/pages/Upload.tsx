@@ -16,7 +16,7 @@ const Upload = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const validTypes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/m4a'];
+    const validTypes = ['audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/m4a', 'audio/x-m4a'];
     if (!validTypes.includes(file.type)) {
       toast({
         title: "Invalid file type",
@@ -30,56 +30,64 @@ const Upload = () => {
     setUploadSuccess(false);
 
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Audio = reader.result?.toString().split(',')[1];
-        
-        if (!base64Audio) {
-          throw new Error('Failed to read audio file');
-        }
-
-        const audio = new Audio(URL.createObjectURL(file));
-        await new Promise((resolve) => {
-          audio.onloadedmetadata = resolve;
-        });
-        
-        const minutes = Math.floor(audio.duration / 60);
-        const seconds = Math.floor(audio.duration % 60);
-        const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-        const { data, error } = await supabase.functions.invoke('transcribe-audio', {
-          body: {
-            audio: base64Audio,
-            fileName: file.name,
-            metadata: {
-              duration: duration,
-              callerId: '+1234567890'
-            }
+      // Convert file to base64
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result?.toString().split(',')[1];
+          if (result) {
+            resolve(result);
+          } else {
+            reject(new Error('Failed to read audio file'));
           }
-        });
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
 
-        if (error) throw error;
+      // Get audio duration
+      const duration = await new Promise<string>((resolve) => {
+        const audio = new Audio(URL.createObjectURL(file));
+        audio.onloadedmetadata = () => {
+          const minutes = Math.floor(audio.duration / 60);
+          const seconds = Math.floor(audio.duration % 60);
+          resolve(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        };
+        audio.onerror = () => resolve('0:00');
+      });
 
-        if (data.success) {
-          setUploadSuccess(true);
-          toast({
-            title: "Success!",
-            description: "Audio file transcribed and analyzed successfully",
-          });
-          
-          setTimeout(() => {
-            navigate('/dashboard');
-          }, 2000);
-        } else {
-          throw new Error(data.error || 'Transcription failed');
+      console.log('Uploading audio file:', file.name, 'Duration:', duration);
+
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: {
+          audio: base64Audio,
+          fileName: file.name,
+          metadata: {
+            duration: duration,
+            callerId: '+1234567890'
+          }
         }
-      };
+      });
 
-      reader.onerror = () => {
-        throw new Error('Failed to read file');
-      };
+      console.log('Edge function response:', data, error);
 
-      reader.readAsDataURL(file);
+      if (error) {
+        throw new Error(error.message || 'Failed to process audio');
+      }
+
+      if (data?.success) {
+        setUploadSuccess(true);
+        toast({
+          title: "Success!",
+          description: "Audio file transcribed and analyzed successfully",
+        });
+        
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2000);
+      } else {
+        throw new Error(data?.error || 'Transcription failed');
+      }
     } catch (error) {
       console.error('Upload error:', error);
       toast({
@@ -87,8 +95,9 @@ const Upload = () => {
         description: error instanceof Error ? error.message : "Failed to process audio file",
         variant: "destructive",
       });
-    } finally {
       setUploading(false);
+    } finally {
+      // Reset input
       event.target.value = '';
     }
   };
