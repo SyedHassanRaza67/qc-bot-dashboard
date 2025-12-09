@@ -13,6 +13,31 @@ serve(async (req) => {
   }
 
   try {
+    // Extract user from JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing authorization header');
+    }
+
+    // Initialize Supabase client with user's JWT to get user info
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    // Create client with user's token to verify and get user
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    
+    if (userError || !user) {
+      console.error('Auth error:', userError);
+      throw new Error('Unauthorized: Invalid or expired token');
+    }
+
+    console.log('Authenticated user:', user.id);
+
     const { audio, fileName, metadata } = await req.json();
     
     if (!audio) {
@@ -124,15 +149,14 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     const publisherId = `PUB-${Math.random().toString(36).substring(7).toUpperCase()}`;
     const buyerId = `BUY-${Math.random().toString(36).substring(7).toUpperCase()}`;
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use service role client for database insert
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Store in database
+    // Store in database with user_id
     const { data: record, error: dbError } = await supabase
       .from('call_records')
       .insert({
+        user_id: user.id, // Link record to authenticated user
         caller_id: metadata?.callerId || '+1234567890',
         publisher: analysis.publisher,
         status: analysis.status,
