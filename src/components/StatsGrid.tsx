@@ -44,7 +44,7 @@ interface StatsGridProps {
     totalCalls?: number;
     avgDuration?: string;
     conversionRate?: string;
-    activePublishers?: number;
+    agentResponseRate?: string;
     activeCampaigns?: number;
     pendingReview?: number;
     qualityScore?: string;
@@ -63,7 +63,7 @@ export const StatsGrid = ({ stats, activeFilter, onFilterClick }: StatsGridProps
     totalCalls: stats?.totalCalls || 0,
     avgDuration: stats?.avgDuration || "0:00",
     conversionRate: stats?.conversionRate || "0%",
-    activePublishers: stats?.activePublishers || 0,
+    agentResponseRate: stats?.agentResponseRate || "0%",
     activeCampaigns: stats?.activeCampaigns || 0,
     pendingReview: stats?.pendingReview || 0,
     qualityScore: stats?.qualityScore || "0%",
@@ -79,7 +79,7 @@ export const StatsGrid = ({ stats, activeFilter, onFilterClick }: StatsGridProps
       <StatCard label="Total Calls" value={defaultStats.totalCalls} trend={8} trendDirection="up" filterKey="all" activeFilter={activeFilter} onFilterClick={onFilterClick} />
       <StatCard label="Avg Duration" value={defaultStats.avgDuration} />
       <StatCard label="Conversion Rate" value={defaultStats.conversionRate} trend={15} trendDirection="up" />
-      <StatCard label="Active Publishers" value={defaultStats.activePublishers} />
+      <StatCard label="Agent Response Rate" value={defaultStats.agentResponseRate} trend={4} trendDirection="up" />
       <StatCard label="Active Campaigns" value={defaultStats.activeCampaigns} />
       <StatCard label="Pending Review" value={defaultStats.pendingReview} filterKey="pending" activeFilter={activeFilter} onFilterClick={onFilterClick} />
       <StatCard label="Quality Score" value={defaultStats.qualityScore} trend={7} trendDirection="up" />
