@@ -43,6 +43,12 @@ interface StatsGridProps {
     disqualified?: number;
     dnc?: number;
     voicemail?: number;
+    callback?: number;
+    ivr?: number;
+    deadAir?: number;
+    hangUp?: number;
+    techIssues?: number;
+    unresponsive?: number;
   };
   activeFilter?: string;
   onFilterClick?: (filter: string) => void;
@@ -56,16 +62,34 @@ export const StatsGrid = ({ stats, activeFilter, onFilterClick }: StatsGridProps
     disqualified: stats?.disqualified || 0,
     dnc: stats?.dnc || 0,
     voicemail: stats?.voicemail || 0,
+    callback: stats?.callback || 0,
+    ivr: stats?.ivr || 0,
+    deadAir: stats?.deadAir || 0,
+    hangUp: stats?.hangUp || 0,
+    techIssues: stats?.techIssues || 0,
+    unresponsive: stats?.unresponsive || 0,
   };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-      <StatCard label="Total Calls" value={defaultStats.totalCalls} filterKey="all" activeFilter={activeFilter} onFilterClick={onFilterClick} />
-      <StatCard label="Sales" value={defaultStats.sales} filterKey="sale" activeFilter={activeFilter} onFilterClick={onFilterClick} />
-      <StatCard label="Not Interested" value={defaultStats.notInterested} filterKey="not-interested" activeFilter={activeFilter} onFilterClick={onFilterClick} />
-      <StatCard label="Disqualified" value={defaultStats.disqualified} filterKey="disqualified" activeFilter={activeFilter} onFilterClick={onFilterClick} />
-      <StatCard label="DNC" value={defaultStats.dnc} filterKey="dnc" activeFilter={activeFilter} onFilterClick={onFilterClick} />
-      <StatCard label="Voicemail" value={defaultStats.voicemail} filterKey="voicemail" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+    <div className="space-y-4 mb-6">
+      {/* Row 1 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard label="Total Calls" value={defaultStats.totalCalls} filterKey="all" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Sales" value={defaultStats.sales} filterKey="sale" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Not Interested" value={defaultStats.notInterested} filterKey="not-interested" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Disqualified" value={defaultStats.disqualified} filterKey="disqualified" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="DNC" value={defaultStats.dnc} filterKey="dnc" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Voicemail" value={defaultStats.voicemail} filterKey="voicemail" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+      </div>
+      {/* Row 2 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard label="Call Back" value={defaultStats.callback} filterKey="callback" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="IVR" value={defaultStats.ivr} filterKey="ivr" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Dead Air" value={defaultStats.deadAir} filterKey="dead-air" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Hang Up" value={defaultStats.hangUp} filterKey="hang-up" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Tech Issues" value={defaultStats.techIssues} filterKey="tech-issues" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Unresponsive" value={defaultStats.unresponsive} filterKey="unresponsive" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+      </div>
     </div>
   );
 };
