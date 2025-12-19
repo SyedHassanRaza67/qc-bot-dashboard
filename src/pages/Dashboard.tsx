@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [statusFilter, setStatusFilter] = useState("all");
 
   const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateFilter, statusFilter);
-  const { data: stats } = useCallStats();
+  const { data: stats } = useCallStats(dateFilter);
 
   const filteredRecords = records.filter(record => 
     searchQuery === "" || 
