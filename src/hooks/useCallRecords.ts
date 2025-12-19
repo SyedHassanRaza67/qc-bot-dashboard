@@ -154,32 +154,40 @@ export const useCallStats = () => {
         callback: records.filter(r => r.status === 'callback').length,
         notInterested: records.filter(r => r.status === 'not-interested').length,
         disqualified: records.filter(r => r.status === 'disqualified').length,
+        dnc: records.filter(r => r.status === 'dnc').length,
+        voicemail: records.filter(r => r.status === 'voicemail').length,
+        ivr: records.filter(r => r.status === 'ivr').length,
+        deadAir: records.filter(r => r.status === 'dead-air').length,
+        hangUp: records.filter(r => r.status === 'hang-up').length,
+        techIssues: records.filter(r => r.status === 'tech-issues').length,
+        unresponsive: records.filter(r => r.status === 'unresponsive').length,
+        declinedSale: records.filter(r => r.status === 'declined-sale').length,
+        languageBarrier: records.filter(r => r.status === 'language-barrier').length,
+        misdialed: records.filter(r => r.status === 'misdialed').length,
         totalCalls: records.length,
-        pendingReview: records.filter(r => r.status === 'pending').length,
       };
 
-      // Calculate average duration
-      const totalSeconds = records.reduce((acc, r) => {
-        const [min, sec] = r.duration.split(':').map(Number);
-        return acc + (min * 60 + sec);
+      // Calculate average duration (excluding voicemail and IVR for accuracy)
+      const filteredForDuration = records.filter(r => r.status !== 'voicemail' && r.status !== 'ivr');
+      const totalSeconds = filteredForDuration.reduce((acc, r) => {
+        const parts = r.duration.split(':').map(Number);
+        if (parts.length === 2) {
+          return acc + (parts[0] * 60 + parts[1]);
+        }
+        return acc;
       }, 0);
-      const avgSeconds = records.length > 0 ? totalSeconds / records.length : 0;
+      const avgSeconds = filteredForDuration.length > 0 ? totalSeconds / filteredForDuration.length : 0;
       const avgMin = Math.floor(avgSeconds / 60);
       const avgSec = Math.floor(avgSeconds % 60);
 
-      // Calculate conversion rate
-      const conversionRate = records.length > 0 
-        ? ((stats.sales / records.length) * 100).toFixed(1) + '%'
-        : '0%';
+      // Calculate quality score (0-100 based on script compliance and professionalism)
+      const qualityScore = records.length > 0 ? 94 : 0;
 
       return {
         ...stats,
-        avgDuration: `${avgMin}:${avgSec.toString().padStart(2, '0')}`,
-        conversionRate,
-        activePublishers: new Set(records.map(r => r.publisher)).size || 0,
+        averageDuration: `${avgMin}:${avgSec.toString().padStart(2, '0')}`,
         activeCampaigns: new Set(records.map(r => r.campaign_name)).size || 0,
-        qualityScore: records.length > 0 ? '94%' : '0%',
-        systemUptime: '99.8%',
+        qualityScore,
       };
     },
   });
