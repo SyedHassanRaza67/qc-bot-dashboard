@@ -10,6 +10,8 @@ export interface CallRecord {
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
   agentName?: string;
   subDisposition: string;
+  agentResponse?: 'very-bad' | 'bad' | 'average' | 'good' | 'excellent';
+  customerResponse?: 'very-bad' | 'bad' | 'average' | 'good' | 'excellent';
   duration: string;
   campaignName: string;
   reason: string;
@@ -64,6 +66,8 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string) => 
         status: record.status as CallRecord['status'],
         agentName: record.agent_name || undefined,
         subDisposition: record.sub_disposition,
+        agentResponse: (record as any).agent_response as CallRecord['agentResponse'],
+        customerResponse: (record as any).customer_response as CallRecord['customerResponse'],
         duration: record.duration,
         campaignName: record.campaign_name,
         reason: record.reason,

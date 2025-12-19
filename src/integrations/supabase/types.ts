@@ -17,11 +17,13 @@ export type Database = {
       call_records: {
         Row: {
           agent_name: string | null
+          agent_response: string | null
           audio_file_name: string | null
           buyer_id: string
           caller_id: string
           campaign_name: string
           created_at: string
+          customer_response: string | null
           duration: string
           id: string
           publisher: string
@@ -39,11 +41,13 @@ export type Database = {
         }
         Insert: {
           agent_name?: string | null
+          agent_response?: string | null
           audio_file_name?: string | null
           buyer_id: string
           caller_id: string
           campaign_name: string
           created_at?: string
+          customer_response?: string | null
           duration: string
           id?: string
           publisher: string
@@ -61,11 +65,13 @@ export type Database = {
         }
         Update: {
           agent_name?: string | null
+          agent_response?: string | null
           audio_file_name?: string | null
           buyer_id?: string
           caller_id?: string
           campaign_name?: string
           created_at?: string
+          customer_response?: string | null
           duration?: string
           id?: string
           publisher?: string
