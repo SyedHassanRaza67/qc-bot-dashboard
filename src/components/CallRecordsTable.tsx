@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, Copy, Download } from "lucide-react";
+import { Eye, Copy, Download, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -93,6 +94,47 @@ const getSentimentEmoji = (sentiment?: string) => {
 
 export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProps) => {
   const navigate = useNavigate();
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+
+  const handlePlayAudio = (e: React.MouseEvent, recordingUrl?: string, id?: string) => {
+    e.stopPropagation();
+    
+    if (!recordingUrl) {
+      toast.error("No recording available");
+      return;
+    }
+
+    // If currently playing this audio, stop it
+    if (playingId === id && audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+      setPlayingId(null);
+      setAudioElement(null);
+      return;
+    }
+
+    // Stop any currently playing audio
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
+
+    // Play new audio
+    const audio = new Audio(recordingUrl);
+    audio.onended = () => {
+      setPlayingId(null);
+      setAudioElement(null);
+    };
+    audio.onerror = () => {
+      toast.error("Failed to play audio");
+      setPlayingId(null);
+      setAudioElement(null);
+    };
+    audio.play();
+    setPlayingId(id || null);
+    setAudioElement(audio);
+  };
 
   const handleCopyTranscript = (e: React.MouseEvent, transcript?: string) => {
     e.stopPropagation();
@@ -189,6 +231,28 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
               <TableCell className="max-w-[180px] truncate">{record.summary}</TableCell>
               <TableCell className="text-right">
                 <div className="flex gap-1 justify-end">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => handlePlayAudio(e, record.recordingUrl, record.id)}
+                        >
+                          {playingId === record.id ? (
+                            <Square className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
