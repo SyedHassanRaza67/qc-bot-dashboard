@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { startOfDay, startOfWeek, startOfMonth, subDays } from "date-fns";
+import { startOfDay, startOfWeek, startOfMonth, subDays, endOfDay } from "date-fns";
+import { DateRange } from "react-day-picker";
 
 export interface CallRecord {
   id: string;
@@ -22,43 +23,26 @@ export interface CallRecord {
 
 export type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
 
-export const useCallRecords = (dateFilter?: DateFilter, statusFilter?: string) => {
+export interface DateRangeFilter {
+  from?: Date;
+  to?: Date;
+}
+
+export const useCallRecords = (dateRange?: DateRange, statusFilter?: string) => {
   return useQuery({
-    queryKey: ['call-records', dateFilter, statusFilter],
+    queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter],
     queryFn: async () => {
       let query = supabase
         .from('call_records')
         .select('*')
         .order('timestamp', { ascending: false });
 
-      // Apply date filter (skip if 'all' or undefined)
-      if (dateFilter && dateFilter !== 'all') {
-        const now = new Date();
-        let startDate: Date;
-        let endDate: Date | null = null;
-
-        switch (dateFilter) {
-          case 'today':
-            startDate = startOfDay(now);
-            break;
-          case 'yesterday':
-            startDate = startOfDay(subDays(now, 1));
-            endDate = startOfDay(now);
-            break;
-          case 'week':
-            startDate = startOfWeek(now, { weekStartsOn: 1 });
-            break;
-          case 'month':
-            startDate = startOfMonth(now);
-            break;
-          default:
-            startDate = startOfDay(now);
-        }
-
-        query = query.gte('timestamp', startDate.toISOString());
-        if (endDate) {
-          query = query.lt('timestamp', endDate.toISOString());
-        }
+      // Apply date range filter
+      if (dateRange?.from) {
+        query = query.gte('timestamp', startOfDay(dateRange.from).toISOString());
+      }
+      if (dateRange?.to) {
+        query = query.lte('timestamp', endOfDay(dateRange.to).toISOString());
       }
 
       // Apply status filter
@@ -133,9 +117,9 @@ export const useCallRecord = (id: string) => {
   });
 };
 
-export const useCallStats = (dateFilter?: DateFilter) => {
+export const useCallStats = (dateRange?: DateRange) => {
   return useQuery({
-    queryKey: ['call-stats', dateFilter],
+    queryKey: ['call-stats', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('call_records')
@@ -151,37 +135,19 @@ export const useCallStats = (dateFilter?: DateFilter) => {
 
       // Calculate date ranges for current and previous periods
       const getDateRanges = () => {
-        switch (dateFilter) {
-          case 'today': {
-            const currentStart = startOfDay(now);
-            const prevStart = startOfDay(subDays(now, 1));
-            const prevEnd = currentStart;
-            return { currentStart, prevStart, prevEnd };
-          }
-          case 'yesterday': {
-            const currentStart = startOfDay(subDays(now, 1));
-            const currentEnd = startOfDay(now);
-            const prevStart = startOfDay(subDays(now, 2));
-            return { currentStart, currentEnd, prevStart, prevEnd: currentStart };
-          }
-          case 'week': {
-            const currentStart = startOfWeek(now, { weekStartsOn: 1 });
-            const prevStart = subDays(currentStart, 7);
-            return { currentStart, prevStart, prevEnd: currentStart };
-          }
-          case 'month': {
-            const currentStart = startOfMonth(now);
-            const prevStart = startOfMonth(subDays(currentStart, 1));
-            return { currentStart, prevStart, prevEnd: currentStart };
-          }
-          default: {
-            // For "all", compare last 30 days vs previous 30 days
-            const currentStart = subDays(now, 30);
-            const prevStart = subDays(now, 60);
-            const prevEnd = currentStart;
-            return { currentStart, prevStart, prevEnd };
-          }
+        if (dateRange?.from) {
+          const currentStart = startOfDay(dateRange.from);
+          const currentEnd = dateRange.to ? endOfDay(dateRange.to) : endOfDay(now);
+          const rangeDays = Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24));
+          const prevStart = subDays(currentStart, rangeDays);
+          const prevEnd = currentStart;
+          return { currentStart, currentEnd, prevStart, prevEnd };
         }
+        // Default: compare last 30 days vs previous 30 days
+        const currentStart = subDays(now, 30);
+        const prevStart = subDays(now, 60);
+        const prevEnd = currentStart;
+        return { currentStart, currentEnd: now, prevStart, prevEnd };
       };
 
       const { currentStart, currentEnd, prevStart, prevEnd } = getDateRanges();

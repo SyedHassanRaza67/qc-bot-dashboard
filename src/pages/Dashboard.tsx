@@ -1,28 +1,23 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw, Calendar } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { DateRange } from "react-day-picker";
 import { StatsGrid } from "@/components/StatsGrid";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
-import { useCallRecords, useCallStats, DateFilter } from "@/hooks/useCallRecords";
+import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateFilter, statusFilter);
-  const { data: stats } = useCallStats(dateFilter);
+  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter);
+  const { data: stats } = useCallStats(dateRange);
 
   const filteredRecords = records.filter(record => 
     searchQuery === "" || 
@@ -65,19 +60,10 @@ const Dashboard = () => {
               <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
             </Button>
             
-            <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as DateFilter)}>
-              <SelectTrigger className="w-[140px] rounded-xl">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="yesterday">Yesterday</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-              </SelectContent>
-            </Select>
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
 
             <Button onClick={() => refetch()} variant="outline" className="rounded-xl">
               Refresh Data
