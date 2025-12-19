@@ -2,15 +2,99 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Play, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useCallRecord } from "@/hooks/useCallRecords";
+import { toast } from "sonner";
 
 const CallDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: record, isLoading } = useCallRecord(id || '');
+
+  useEffect(() => {
+    // Cleanup audio on unmount
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handlePlayPause = () => {
+    if (!record?.recordingUrl) {
+      toast.error("No recording available for this call");
+      return;
+    }
+
+    if (!audioRef.current) {
+      audioRef.current = new Audio(record.recordingUrl);
+      
+      audioRef.current.onloadedmetadata = () => {
+        setDuration(audioRef.current?.duration || 0);
+      };
+      
+      audioRef.current.ontimeupdate = () => {
+        setCurrentTime(audioRef.current?.currentTime || 0);
+      };
+      
+      audioRef.current.onended = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      };
+      
+      audioRef.current.onerror = () => {
+        toast.error("Failed to load audio recording");
+        setIsPlaying(false);
+      };
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percentage = clickX / rect.width;
+    const newTime = percentage * duration;
+    
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const handleDownload = () => {
+    if (!record?.recordingUrl) {
+      toast.error("No recording available for download");
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = record.recordingUrl;
+    link.download = `call-recording-${record.id}.mp3`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Download started");
+  };
 
   if (isLoading) {
     return (
@@ -68,6 +152,8 @@ const CallDetail = () => {
     };
     return colors[status as keyof typeof colors] || 'text-muted-foreground';
   };
+
+  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,7 +213,7 @@ const CallDetail = () => {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Agent Name</div>
-                <div className="font-medium">{record.agentName}</div>
+                <div className="font-medium">{record.agentName || '—'}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Sub-Disposition</div>
@@ -172,31 +258,49 @@ const CallDetail = () => {
             <CardTitle>Call Recording</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <Button
-                size="lg"
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="transition-all duration-200 hover:shadow-md"
-              >
-                {isPlaying ? (
-                  <Pause className="h-5 w-5 mr-2" />
-                ) : (
-                  <Play className="h-5 w-5 mr-2" />
-                )}
-                {isPlaying ? 'Pause' : 'Play'}
-              </Button>
-              
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                <div className="h-full bg-primary w-1/3 transition-all duration-300"></div>
+            {record.recordingUrl ? (
+              <div className="flex items-center gap-4">
+                <Button
+                  size="lg"
+                  onClick={handlePlayPause}
+                  className="transition-all duration-200 hover:shadow-md"
+                >
+                  {isPlaying ? (
+                    <Pause className="h-5 w-5 mr-2" />
+                  ) : (
+                    <Play className="h-5 w-5 mr-2" />
+                  )}
+                  {isPlaying ? 'Pause' : 'Play'}
+                </Button>
+                
+                <div 
+                  className="flex-1 h-2 bg-muted rounded-full overflow-hidden cursor-pointer"
+                  onClick={handleProgressClick}
+                >
+                  <div 
+                    className="h-full bg-primary transition-all duration-100"
+                    style={{ width: `${progressPercentage}%` }}
+                  ></div>
+                </div>
+                
+                <span className="font-mono text-sm text-muted-foreground min-w-[100px] text-right">
+                  {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : record.duration}
+                </span>
+                
+                <Button 
+                  variant="outline" 
+                  className="transition-all duration-200 hover:shadow-md"
+                  onClick={handleDownload}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
               </div>
-              
-              <span className="font-mono text-sm text-muted-foreground">1:52 / 5:34</span>
-              
-              <Button variant="outline" className="transition-all duration-200 hover:shadow-md">
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
-            </div>
+            ) : (
+              <div className="text-muted-foreground text-center py-4">
+                No recording available for this call
+              </div>
+            )}
           </CardContent>
         </Card>
 
