@@ -49,6 +49,12 @@ interface StatsGridProps {
     hangUp?: number;
     techIssues?: number;
     unresponsive?: number;
+    declinedSale?: number;
+    languageBarrier?: number;
+    misdialed?: number;
+    activeCampaigns?: number;
+    averageDuration?: string;
+    qualityScore?: number;
   };
   activeFilter?: string;
   onFilterClick?: (filter: string) => void;
@@ -68,6 +74,12 @@ export const StatsGrid = ({ stats, activeFilter, onFilterClick }: StatsGridProps
     hangUp: stats?.hangUp || 0,
     techIssues: stats?.techIssues || 0,
     unresponsive: stats?.unresponsive || 0,
+    declinedSale: stats?.declinedSale || 0,
+    languageBarrier: stats?.languageBarrier || 0,
+    misdialed: stats?.misdialed || 0,
+    activeCampaigns: stats?.activeCampaigns || 0,
+    averageDuration: stats?.averageDuration || "0:00",
+    qualityScore: stats?.qualityScore || 0,
   };
 
   return (
@@ -89,6 +101,15 @@ export const StatsGrid = ({ stats, activeFilter, onFilterClick }: StatsGridProps
         <StatCard label="Hang Up" value={defaultStats.hangUp} filterKey="hang-up" activeFilter={activeFilter} onFilterClick={onFilterClick} />
         <StatCard label="Tech Issues" value={defaultStats.techIssues} filterKey="tech-issues" activeFilter={activeFilter} onFilterClick={onFilterClick} />
         <StatCard label="Unresponsive" value={defaultStats.unresponsive} filterKey="unresponsive" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+      </div>
+      {/* Row 3 */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard label="Declined Sale" value={defaultStats.declinedSale} filterKey="declined-sale" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Language Barrier" value={defaultStats.languageBarrier} filterKey="language-barrier" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Misdialed" value={defaultStats.misdialed} filterKey="misdialed" activeFilter={activeFilter} onFilterClick={onFilterClick} />
+        <StatCard label="Active Campaigns" value={defaultStats.activeCampaigns} />
+        <StatCard label="Avg Duration" value={defaultStats.averageDuration} />
+        <StatCard label="Quality Score" value={defaultStats.qualityScore} />
       </div>
     </div>
   );
