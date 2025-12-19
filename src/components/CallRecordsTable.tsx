@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Eye } from "lucide-react";
+import { Eye, Copy, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -9,17 +9,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CallRecord {
   id: string;
   timestamp: string;
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
+  dialerDisposition?: string;
   agentName?: string;
   subDisposition: string;
+  agentResponse?: 'very-bad' | 'bad' | 'average' | 'good' | 'excellent';
+  customerResponse?: 'very-bad' | 'bad' | 'average' | 'good' | 'excellent';
   duration: string;
   campaignName: string;
   reason: string;
   summary: string;
+  transcript?: string;
+  recordingUrl?: string;
 }
 
 interface CallRecordsTableProps {
@@ -51,8 +63,61 @@ const getStatusBadge = (status: string) => {
   );
 };
 
+const getSentimentEmoji = (sentiment?: string) => {
+  const sentimentMap: Record<string, { emoji: string; label: string }> = {
+    'very-bad': { emoji: '😡', label: 'Very Bad' },
+    'bad': { emoji: '😕', label: 'Bad' },
+    'average': { emoji: '🙂', label: 'Average' },
+    'good': { emoji: '😊', label: 'Good' },
+    'excellent': { emoji: '😍', label: 'Excellent' },
+  };
+  
+  if (!sentiment || !sentimentMap[sentiment]) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  
+  const { emoji, label } = sentimentMap[sentiment];
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger>
+          <span className="text-lg cursor-default">{emoji}</span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{label}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProps) => {
   const navigate = useNavigate();
+
+  const handleCopyTranscript = (e: React.MouseEvent, transcript?: string) => {
+    e.stopPropagation();
+    if (transcript) {
+      navigator.clipboard.writeText(transcript);
+      toast.success("Transcript copied to clipboard");
+    } else {
+      toast.error("No transcript available");
+    }
+  };
+
+  const handleDownloadAudio = (e: React.MouseEvent, recordingUrl?: string, id?: string) => {
+    e.stopPropagation();
+    if (recordingUrl) {
+      const link = document.createElement('a');
+      link.href = recordingUrl;
+      link.download = `recording-${id}.mp3`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success("Download started");
+    } else {
+      toast.error("No recording available");
+    }
+  };
 
   if (loading) {
     return (
@@ -80,8 +145,11 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
           <TableRow>
             <TableHead className="font-semibold uppercase text-xs w-16">Sr. No.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Timestamp</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Status</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">AI Dispo.</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">Dialer Dispo.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Sub-Disposition</TableHead>
+            <TableHead className="font-semibold uppercase text-xs text-center">Agent Response</TableHead>
+            <TableHead className="font-semibold uppercase text-xs text-center">Customer Response</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Duration</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Campaign</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Reason</TableHead>
@@ -99,30 +167,84 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
               <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
               <TableCell>
-                <div className="space-y-1">
-                  {getStatusBadge(record.status)}
-                  {record.agentName && (
-                    <div className="text-xs text-muted-foreground">{record.agentName}</div>
-                  )}
-                </div>
+                {getStatusBadge(record.status)}
+              </TableCell>
+              <TableCell>
+                {record.dialerDisposition ? (
+                  <span className="text-sm text-muted-foreground">{record.dialerDisposition}</span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
               </TableCell>
               <TableCell>{record.subDisposition}</TableCell>
+              <TableCell className="text-center">
+                {getSentimentEmoji(record.agentResponse)}
+              </TableCell>
+              <TableCell className="text-center">
+                {getSentimentEmoji(record.customerResponse)}
+              </TableCell>
               <TableCell className="font-mono">{record.duration}</TableCell>
               <TableCell>{record.campaignName}</TableCell>
-              <TableCell className="max-w-[200px] truncate">{record.reason}</TableCell>
-              <TableCell className="max-w-[250px] truncate">{record.summary}</TableCell>
+              <TableCell className="max-w-[150px] truncate">{record.reason}</TableCell>
+              <TableCell className="max-w-[180px] truncate">{record.summary}</TableCell>
               <TableCell className="text-right">
-                <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/record/${record.id}`);
-                    }}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
+                <div className="flex gap-1 justify-end">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/record/${record.id}`);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>View Call Detail</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => handleCopyTranscript(e, record.transcript)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Copy Transcript</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => handleDownloadAudio(e, record.recordingUrl, record.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Download Audio</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </TableCell>
             </TableRow>
