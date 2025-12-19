@@ -39,8 +39,6 @@ const Dashboard = () => {
           <p className="text-muted-foreground">Track, manage, and analyze your call recordings</p>
         </div>
 
-        <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={setStatusFilter} />
-
         {/* Search & Controls */}
         <div className="flex flex-col md:flex-row gap-4 items-center mb-8">
           <div className="relative flex-1 w-full">
@@ -72,6 +70,8 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
+
+        <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={setStatusFilter} />
         
         <CampaignFilters
           autoRefresh={autoRefresh}
