@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +46,40 @@ serve(async (req) => {
     }
 
     console.log('Processing audio file:', fileName);
+
+    // Use service role client for storage and database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Upload audio to storage
+    const fileExt = fileName.split('.').pop() || 'mp3';
+    const storagePath = `${user.id}/${Date.now()}-${fileName}`;
+    
+    // Decode base64 to binary
+    const audioBuffer = base64Decode(audio);
+    
+    console.log('Uploading audio to storage:', storagePath);
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('audio-recordings')
+      .upload(storagePath, audioBuffer, {
+        contentType: `audio/${fileExt === 'mp3' ? 'mpeg' : fileExt}`,
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError);
+      throw new Error(`Failed to upload audio: ${uploadError.message}`);
+    }
+
+    console.log('Audio uploaded successfully:', uploadData.path);
+
+    // Get public URL for the uploaded file
+    const { data: urlData } = supabase.storage
+      .from('audio-recordings')
+      .getPublicUrl(storagePath);
+
+    const recordingUrl = urlData.publicUrl;
+    console.log('Recording URL:', recordingUrl);
 
     // Use Lovable AI (Gemini) for transcription and analysis
     const analysisPrompt = `You are an expert audio transcription and call analysis AI. 
@@ -149,14 +184,11 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
     const publisherId = `PUB-${Math.random().toString(36).substring(7).toUpperCase()}`;
     const buyerId = `BUY-${Math.random().toString(36).substring(7).toUpperCase()}`;
 
-    // Use service role client for database insert
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Store in database with user_id
+    // Store in database with user_id and recording URL
     const { data: record, error: dbError } = await supabase
       .from('call_records')
       .insert({
-        user_id: user.id, // Link record to authenticated user
+        user_id: user.id,
         caller_id: metadata?.callerId || '+1234567890',
         publisher: analysis.publisher,
         status: analysis.status,
@@ -171,6 +203,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
         buyer_id: buyerId,
         transcript: analysis.transcript,
         audio_file_name: fileName,
+        recording_url: recordingUrl, // Save the storage URL
       })
       .select()
       .single();
