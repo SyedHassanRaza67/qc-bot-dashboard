@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Play, Pause } from "lucide-react";
+import { ArrowLeft, Download, Play, Pause, Phone, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useRef, useEffect } from "react";
@@ -17,7 +17,6 @@ const CallDetail = () => {
   const { data: record, isLoading } = useCallRecord(id || '');
 
   useEffect(() => {
-    // Cleanup audio on unmount
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -96,6 +95,37 @@ const CallDetail = () => {
     toast.success("Download started");
   };
 
+  const getSentimentEmoji = (sentiment?: string) => {
+    const emojis: Record<string, string> = {
+      'excellent': '😍',
+      'good': '😊',
+      'average': '🙂',
+      'bad': '😕',
+      'very-bad': '😡',
+    };
+    return sentiment ? emojis[sentiment] || '—' : '—';
+  };
+
+  const getStatusColor = (status: string) => {
+    const colors = {
+      sale: 'text-success',
+      callback: 'text-warning',
+      'not-interested': 'text-destructive',
+      disqualified: 'text-warning',
+      pending: 'text-muted-foreground',
+    };
+    return colors[status as keyof typeof colors] || 'text-muted-foreground';
+  };
+
+  // Calculate a mock quality score (0-100) - in future this would come from AI analysis
+  const calculateQualityScore = () => {
+    // Placeholder logic - would be replaced with actual AI scoring
+    const baseScore = 70;
+    const statusBonus = record?.status === 'sale' ? 20 : record?.status === 'callback' ? 10 : 0;
+    const agentBonus = record?.agentResponse === 'excellent' ? 10 : record?.agentResponse === 'good' ? 5 : 0;
+    return Math.min(100, baseScore + statusBonus + agentBonus);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
@@ -143,17 +173,8 @@ const CallDetail = () => {
     );
   }
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      sale: 'text-success',
-      callback: 'text-warning',
-      'not-interested': 'text-destructive',
-      disqualified: 'text-warning',
-    };
-    return colors[status as keyof typeof colors] || 'text-muted-foreground';
-  };
-
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const qualityScore = calculateQualityScore();
 
   return (
     <div className="min-h-screen bg-background">
@@ -174,50 +195,104 @@ const CallDetail = () => {
 
       <main className="max-w-7xl mx-auto p-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Basic Information */}
+          {/* 1. Basic Information (The Foundation) */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Basic Information</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <span className="text-primary">📋</span>
+                Basic Information
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">The Foundation</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <div>
                 <div className="text-sm text-muted-foreground">Timestamp</div>
                 <div className="font-mono font-medium">{record.timestamp}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Caller ID / Phone</div>
+                <div className="font-mono font-medium flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-primary" />
+                  <a href={`tel:${record.callerId}`} className="hover:text-primary hover:underline">
+                    {record.callerId}
+                  </a>
+                </div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Campaign</div>
                 <div className="font-medium">{record.campaignName}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Publisher ID</div>
-                <div className="font-mono font-medium">{record.publisherId}</div>
+                <div className="text-sm text-muted-foreground">Agent Name</div>
+                <div className="font-medium">{record.agentName || '—'}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Duration</div>
-                <div className="font-mono font-medium">{record.duration}</div>
+                <div className="font-mono font-medium">
+                  Total Time: {record.duration}
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* QC Information */}
+          {/* 2. QC Information (The "Brain") */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">QC Information</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <span className="text-primary">🧠</span>
+                QC Information
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">The "Brain"</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <div>
-                <div className="text-sm text-muted-foreground">Status</div>
+                <div className="text-sm text-muted-foreground">AI Dispo.</div>
                 <div className={`font-semibold capitalize ${getStatusColor(record.status)}`}>
                   {record.status.replace('-', ' ')}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Agent Name</div>
-                <div className="font-medium">{record.agentName || '—'}</div>
-              </div>
-              <div>
                 <div className="text-sm text-muted-foreground">Sub-Disposition</div>
                 <div className="font-medium">{record.subDisposition}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Quality Score</div>
+                <div className="flex items-center gap-2">
+                  <div className={`text-2xl font-bold ${
+                    qualityScore >= 80 ? 'text-success' : 
+                    qualityScore >= 60 ? 'text-warning' : 'text-destructive'
+                  }`}>
+                    {qualityScore}
+                  </div>
+                  <span className="text-sm text-muted-foreground">/ 100</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm text-muted-foreground">Agent Sentiment</div>
+                  <div className="text-2xl">{getSentimentEmoji(record.agentResponse)}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-muted-foreground">Customer Sentiment</div>
+                  <div className="text-2xl">{getSentimentEmoji(record.customerResponse)}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 3. AI Insights (The Logic) */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <span className="text-primary">🤖</span>
+                AI Insights
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">The Logic</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="text-sm text-muted-foreground">System Call ID</div>
+                <div className="font-mono font-medium text-sm break-all">{record.systemCallId}</div>
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Reason</div>
@@ -225,28 +300,15 @@ const CallDetail = () => {
               </div>
               <div>
                 <div className="text-sm text-muted-foreground">Summary</div>
-                <div className="text-sm">{record.summary}</div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* System Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">System Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <div className="text-sm text-muted-foreground">System Call ID</div>
-                <div className="font-mono font-medium text-sm">{record.systemCallId}</div>
+                <div className="text-sm bg-muted/30 rounded p-2">{record.summary}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Publisher ID</div>
-                <div className="font-mono font-medium text-sm">{record.publisherId}</div>
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">Buyer ID</div>
-                <div className="font-mono font-medium text-sm">{record.buyerId}</div>
+                <div className="text-sm text-muted-foreground">Compliance Check</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <CheckCircle className="h-5 w-5 text-success" />
+                  <span className="text-sm font-medium text-success">Yes</span>
+                  <span className="text-xs text-muted-foreground">(Legal disclosures verified)</span>
+                </div>
               </div>
             </CardContent>
           </Card>
