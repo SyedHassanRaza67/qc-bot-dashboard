@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw, CloudDownload, Upload, Phone } from "lucide-react";
+import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -11,17 +11,62 @@ import { SyncIndicator } from "@/components/SyncIndicator";
 import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
 import { useViciSync } from "@/hooks/useViciSync";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
 
   const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter, sourceFilter);
-  const { data: stats } = useCallStats(dateRange, sourceFilter);
+  const { data: stats, refetch: refetchStats } = useCallStats(dateRange, sourceFilter);
   const { isSyncing, syncRecordings } = useViciSync();
+
+  // Real-time subscription when Live mode is enabled
+  useEffect(() => {
+    if (!isLive) return;
+
+    const channel = supabase
+      .channel('live-call-records')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'call_records'
+        },
+        (payload) => {
+          console.log('Live update received:', payload);
+          refetch();
+          refetchStats();
+          if (payload.eventType === 'INSERT') {
+            toast.success('New call record received!', {
+              description: `Call ID: ${(payload.new as any).system_call_id}`,
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          toast.success('Live mode activated', {
+            description: 'You will receive real-time updates',
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      toast.info('Live mode deactivated');
+    };
+  }, [isLive, refetch, refetchStats]);
+
+  const handleLiveToggle = () => {
+    setIsLive(!isLive);
+  };
 
   const handleSyncFromDialer = async () => {
     // Sync last 7 days by default, or use selected date range
@@ -78,6 +123,18 @@ const Dashboard = () => {
           </div>
           
           <div className="flex gap-2">
+            <Button
+              onClick={handleLiveToggle}
+              className={`rounded-xl gap-2 transition-all duration-200 ${
+                isLive 
+                  ? 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/30' 
+                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+              }`}
+            >
+              <Radio className={`h-4 w-4 ${isLive ? 'animate-pulse' : ''}`} />
+              Live
+            </Button>
+
             <Button
               variant={autoRefresh ? "default" : "outline"}
               size="icon"
