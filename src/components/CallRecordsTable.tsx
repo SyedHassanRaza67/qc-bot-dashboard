@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Eye, Copy, Download, Play, Square } from "lucide-react";
+import { useState, memo, useCallback } from "react";
+import { Eye, Copy, Download, Play, Square, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CallRecord {
   id: string;
@@ -41,6 +42,10 @@ interface CallRecordsTableProps {
   records?: CallRecord[];
   loading?: boolean;
   onViewRecord?: (recordId: string) => void;
+  currentPage?: number;
+  totalPages?: number;
+  totalCount?: number;
+  onPageChange?: (page: number) => void;
 }
 
 const getStatusBadge = (status: string, summary?: string) => {
@@ -96,7 +101,10 @@ const getSentimentEmoji = (sentiment?: string) => {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>
-          <span className="text-lg cursor-default">{emoji}</span>
+          <span className="flex flex-col items-center gap-0.5 cursor-default">
+            <span className="text-lg">{emoji}</span>
+            <span className="text-[10px] text-muted-foreground font-medium">{label}</span>
+          </span>
         </TooltipTrigger>
         <TooltipContent>
           <p>{label}</p>
@@ -106,11 +114,321 @@ const getSentimentEmoji = (sentiment?: string) => {
   );
 };
 
-export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRecordsTableProps) => {
+// Memoized table row component for performance
+const TableRowMemo = memo(({ 
+  record, 
+  index, 
+  startIndex,
+  playingId, 
+  onPlay, 
+  onView, 
+  onCopy, 
+  onDownload 
+}: {
+  record: CallRecord;
+  index: number;
+  startIndex: number;
+  playingId: string | null;
+  onPlay: (e: React.MouseEvent, recordingUrl?: string, id?: string, uploadSource?: string) => void;
+  onView: (id: string) => void;
+  onCopy: (e: React.MouseEvent, transcript?: string) => void;
+  onDownload: (e: React.MouseEvent, recordingUrl?: string, id?: string) => void;
+}) => (
+  <TableRow 
+    className={`table-row cursor-pointer ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
+    onClick={() => onView(record.id)}
+  >
+    <TableCell className="font-semibold text-primary">{startIndex + index + 1}</TableCell>
+    <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
+    <TableCell>
+      <div className="flex items-center gap-1">
+        <span className="font-mono text-sm">{record.leadId || '—'}</span>
+        {record.leadId && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(record.leadId || '');
+                    toast.success("Lead ID copied");
+                  }}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Copy Lead ID</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    </TableCell>
+    <TableCell>
+      <div className="flex items-center gap-1">
+        <span className="font-mono text-sm">{record.agentName || record.agentId || '—'}</span>
+        {(record.agentName || record.agentId) && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(record.agentName || record.agentId || '');
+                    toast.success("Agent ID copied");
+                  }}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Copy Agent ID</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    </TableCell>
+    <TableCell>
+      {getStatusBadge(record.status, record.summary)}
+    </TableCell>
+    <TableCell>{record.subDisposition}</TableCell>
+    <TableCell className="text-center">
+      {getSentimentEmoji(record.agentResponse)}
+    </TableCell>
+    <TableCell className="text-center">
+      {getSentimentEmoji(record.customerResponse)}
+    </TableCell>
+    <TableCell className="font-mono">{record.duration}</TableCell>
+    <TableCell>{record.campaignName}</TableCell>
+    <TableCell className="max-w-[150px] truncate">{record.reason}</TableCell>
+    <TableCell className="max-w-[180px] truncate">{record.summary}</TableCell>
+    <TableCell className="text-right">
+      <div className="flex gap-1 justify-end">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => onPlay(e, record.recordingUrl, record.id, record.uploadSource)}
+              >
+                {playingId === record.id ? (
+                  <Square className="h-4 w-4 text-destructive" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onView(record.id);
+                }}
+              >
+                <Eye className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>View Call Detail</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => onCopy(e, record.transcript)}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Copy Transcript</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => onDownload(e, record.recordingUrl, record.id)}
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Download Audio</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </TableCell>
+  </TableRow>
+));
+
+TableRowMemo.displayName = 'TableRowMemo';
+
+// Loading skeleton component
+const TableSkeleton = () => (
+  <div className="bg-card border border-border rounded-lg overflow-hidden">
+    <div className="p-4 space-y-3">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div key={i} className="flex gap-4 items-center">
+          <Skeleton className="h-4 w-8" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-6 w-24 rounded-full" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-8 w-8 rounded-full" />
+          <Skeleton className="h-8 w-8 rounded-full" />
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 flex-1" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+// Pagination component
+const Pagination = ({ 
+  currentPage, 
+  totalPages, 
+  totalCount, 
+  onPageChange 
+}: { 
+  currentPage: number; 
+  totalPages: number; 
+  totalCount: number;
+  onPageChange: (page: number) => void;
+}) => {
+  const pageSize = 50;
+  const startRecord = (currentPage - 1) * pageSize + 1;
+  const endRecord = Math.min(currentPage * pageSize, totalCount);
+
+  // Generate page numbers to show
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+    
+    if (totalPages <= maxVisible + 2) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      
+      if (currentPage > 3) pages.push('...');
+      
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      
+      for (let i = start; i <= end; i++) pages.push(i);
+      
+      if (currentPage < totalPages - 2) pages.push('...');
+      
+      pages.push(totalPages);
+    }
+    
+    return pages;
+  };
+
+  return (
+    <div className="flex items-center justify-between px-4 py-4 border-t border-border">
+      <div className="text-sm text-muted-foreground">
+        Showing <span className="font-medium text-foreground">{startRecord}</span> to{' '}
+        <span className="font-medium text-foreground">{endRecord}</span> of{' '}
+        <span className="font-medium text-foreground">{totalCount}</span> records
+      </div>
+      
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="gap-1"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Previous
+        </Button>
+        
+        <div className="flex items-center gap-1 mx-2">
+          {getPageNumbers().map((page, idx) => (
+            typeof page === 'number' ? (
+              <Button
+                key={idx}
+                variant={currentPage === page ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onPageChange(page)}
+                className="min-w-[36px]"
+              >
+                {page}
+              </Button>
+            ) : (
+              <span key={idx} className="px-2 text-muted-foreground">...</span>
+            )
+          ))}
+        </div>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="gap-1"
+        >
+          Next
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export const CallRecordsTable = ({ 
+  records = [], 
+  loading, 
+  onViewRecord,
+  currentPage = 1,
+  totalPages = 1,
+  totalCount = 0,
+  onPageChange
+}: CallRecordsTableProps) => {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  
+  const startIndex = (currentPage - 1) * 50;
 
-  const handlePlayAudio = async (e: React.MouseEvent, recordingUrl?: string, id?: string, uploadSource?: string) => {
+  const handlePlayAudio = useCallback(async (e: React.MouseEvent, recordingUrl?: string, id?: string, uploadSource?: string) => {
     e.stopPropagation();
     
     if (!recordingUrl) {
@@ -203,9 +521,9 @@ export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRe
     } catch (err) {
       toast.error("Failed to play audio");
     }
-  };
+  }, [playingId, audioElement]);
 
-  const handleCopyTranscript = (e: React.MouseEvent, transcript?: string) => {
+  const handleCopyTranscript = useCallback((e: React.MouseEvent, transcript?: string) => {
     e.stopPropagation();
     if (transcript) {
       navigator.clipboard.writeText(transcript);
@@ -213,9 +531,9 @@ export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRe
     } else {
       toast.error("No transcript available");
     }
-  };
+  }, []);
 
-  const handleDownloadAudio = (e: React.MouseEvent, recordingUrl?: string, id?: string) => {
+  const handleDownloadAudio = useCallback((e: React.MouseEvent, recordingUrl?: string, id?: string) => {
     e.stopPropagation();
     if (recordingUrl) {
       const link = document.createElement('a');
@@ -228,17 +546,14 @@ export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRe
     } else {
       toast.error("No recording available");
     }
-  };
+  }, []);
+
+  const handleViewRecord = useCallback((id: string) => {
+    onViewRecord?.(id);
+  }, [onViewRecord]);
 
   if (loading) {
-    return (
-      <div className="bg-card border border-border rounded-lg p-8 text-center">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 bg-muted rounded w-3/4 mx-auto"></div>
-          <div className="h-4 bg-muted rounded w-1/2 mx-auto"></div>
-        </div>
-      </div>
-    );
+    return <TableSkeleton />;
   }
 
   if (records.length === 0) {
@@ -271,166 +586,29 @@ export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRe
         </TableHeader>
         <TableBody>
           {records.map((record, index) => (
-            <TableRow 
-              key={record.id} 
-              className={`table-row cursor-pointer ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
-              onClick={() => onViewRecord?.(record.id)}
-            >
-              <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
-              <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <span className="font-mono text-sm">{record.leadId || '—'}</span>
-                  {record.leadId && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(record.leadId || '');
-                              toast.success("Lead ID copied");
-                            }}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Copy Lead ID</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <span className="font-mono text-sm">{record.agentName || record.agentId || '—'}</span>
-                  {(record.agentName || record.agentId) && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(record.agentName || record.agentId || '');
-                              toast.success("Agent ID copied");
-                            }}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Copy Agent ID</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {getStatusBadge(record.status, record.summary)}
-              </TableCell>
-              <TableCell>{record.subDisposition}</TableCell>
-              <TableCell className="text-center">
-                {getSentimentEmoji(record.agentResponse)}
-              </TableCell>
-              <TableCell className="text-center">
-                {getSentimentEmoji(record.customerResponse)}
-              </TableCell>
-              <TableCell className="font-mono">{record.duration}</TableCell>
-              <TableCell>{record.campaignName}</TableCell>
-              <TableCell className="max-w-[150px] truncate">{record.reason}</TableCell>
-              <TableCell className="max-w-[180px] truncate">{record.summary}</TableCell>
-              <TableCell className="text-right">
-                <div className="flex gap-1 justify-end">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => handlePlayAudio(e, record.recordingUrl, record.id, record.uploadSource)}
-                        >
-                          {playingId === record.id ? (
-                            <Square className="h-4 w-4 text-destructive" />
-                          ) : (
-                            <Play className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                            onClick={() => onViewRecord?.(record.id)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>View Call Detail</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => handleCopyTranscript(e, record.transcript)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Copy Transcript</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => handleDownloadAudio(e, record.recordingUrl, record.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Download Audio</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </TableCell>
-            </TableRow>
+            <TableRowMemo
+              key={record.id}
+              record={record}
+              index={index}
+              startIndex={startIndex}
+              playingId={playingId}
+              onPlay={handlePlayAudio}
+              onView={handleViewRecord}
+              onCopy={handleCopyTranscript}
+              onDownload={handleDownloadAudio}
+            />
           ))}
         </TableBody>
       </Table>
+      
+      {onPageChange && totalPages > 1 && (
+        <Pagination 
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          onPageChange={onPageChange}
+        />
+      )}
     </div>
   );
 };

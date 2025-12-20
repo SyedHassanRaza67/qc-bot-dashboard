@@ -33,14 +33,63 @@ export interface DateRangeFilter {
   to?: Date;
 }
 
-export const useCallRecords = (dateRange?: DateRange, statusFilter?: string, sourceFilter?: string) => {
+export interface PaginatedCallRecords {
+  records: CallRecord[];
+  totalCount: number;
+  totalPages: number;
+  currentPage: number;
+}
+
+const PAGE_SIZE = 50;
+
+export const useCallRecords = (
+  dateRange?: DateRange, 
+  statusFilter?: string, 
+  sourceFilter?: string,
+  page: number = 1,
+  pageSize: number = PAGE_SIZE
+) => {
   return useQuery({
-    queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter, sourceFilter],
-    queryFn: async () => {
+    queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter, sourceFilter, page, pageSize],
+    queryFn: async (): Promise<PaginatedCallRecords> => {
+      // First, get total count
+      let countQuery = supabase
+        .from('call_records')
+        .select('*', { count: 'exact', head: true });
+
+      // Apply filters for count
+      if (dateRange?.from) {
+        countQuery = countQuery.gte('timestamp', startOfDay(dateRange.from).toISOString());
+      }
+      if (dateRange?.to) {
+        countQuery = countQuery.lte('timestamp', endOfDay(dateRange.to).toISOString());
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        countQuery = countQuery.eq('status', statusFilter);
+      }
+      if (sourceFilter && sourceFilter !== 'all') {
+        countQuery = countQuery.eq('upload_source', sourceFilter);
+      }
+
+      const { count, error: countError } = await countQuery;
+      
+      if (countError) {
+        console.error('Error fetching count:', countError);
+        throw countError;
+      }
+
+      const totalCount = count || 0;
+      const totalPages = Math.ceil(totalCount / pageSize);
+
+      // Now fetch paginated data
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
       let query = supabase
         .from('call_records')
         .select('*')
-        .order('timestamp', { ascending: false });
+        .order('timestamp', { ascending: false })
+        .range(from, to);
 
       // Apply date range filter
       if (dateRange?.from) {
@@ -67,7 +116,7 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string, sou
         throw error;
       }
 
-      return (data || []).map((record) => ({
+      const records = (data || []).map((record) => ({
         id: record.id,
         timestamp: new Date(record.timestamp).toLocaleString(),
         rawTimestamp: new Date(record.timestamp),
@@ -89,7 +138,16 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string, sou
         transcript: record.transcript,
         uploadSource: (record as any).upload_source || 'manual',
       })) as CallRecord[];
+
+      return {
+        records,
+        totalCount,
+        totalPages,
+        currentPage: page,
+      };
     },
+    staleTime: 30 * 1000, // 30 seconds
+    gcTime: 5 * 60 * 1000, // 5 minutes cache
   });
 };
 
@@ -134,6 +192,7 @@ export const useCallRecord = (id: string) => {
       } as CallRecord;
     },
     enabled: !!id,
+    staleTime: 30 * 1000,
   });
 };
 
@@ -277,5 +336,7 @@ export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
         },
       };
     },
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 };
