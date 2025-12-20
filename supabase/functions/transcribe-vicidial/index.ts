@@ -71,11 +71,20 @@ serve(async (req) => {
       );
     }
 
-    // Get audio as base64 for Gemini
+    // Get audio as base64 for Gemini (chunked to avoid stack overflow)
     const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+    const audioBytes = new Uint8Array(audioBuffer);
     
     console.log(`Audio fetched, size: ${audioBuffer.byteLength} bytes`);
+    
+    // Convert to base64 in chunks to avoid "Maximum call stack size exceeded"
+    let binaryString = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < audioBytes.length; i += chunkSize) {
+      const chunk = audioBytes.subarray(i, Math.min(i + chunkSize, audioBytes.length));
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const audioBase64 = btoa(binaryString);
 
     // Call Lovable AI (Gemini) for transcription and analysis
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
