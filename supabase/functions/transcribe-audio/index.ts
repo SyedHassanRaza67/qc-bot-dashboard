@@ -199,7 +199,8 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
         buyer_id: buyerId,
         transcript: analysis.transcript,
         audio_file_name: fileName,
-        recording_url: recordingUrl, // Save the storage URL
+        recording_url: recordingUrl,
+        upload_source: 'manual', // Mark as manually uploaded
       })
       .select()
       .single();

@@ -37,6 +37,7 @@ export type Database = {
           timestamp: string
           transcript: string
           updated_at: string
+          upload_source: string
           user_id: string | null
         }
         Insert: {
@@ -61,6 +62,7 @@ export type Database = {
           timestamp?: string
           transcript: string
           updated_at?: string
+          upload_source?: string
           user_id?: string | null
         }
         Update: {
@@ -85,6 +87,7 @@ export type Database = {
           timestamp?: string
           transcript?: string
           updated_at?: string
+          upload_source?: string
           user_id?: string | null
         }
         Relationships: []
