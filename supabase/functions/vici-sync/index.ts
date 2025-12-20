@@ -114,119 +114,147 @@ serve(async (req) => {
         );
       }
       
-      const today = new Date().toISOString().split('T')[0];
-      const queryDate = dateFrom || today;
+      // Generate date range to sync (default last 7 days)
+      const today = new Date();
+      const defaultFromDate = new Date(today);
+      defaultFromDate.setDate(today.getDate() - 7);
       
-      // Build recording lookup URL with correct VICIdial API format
-      // Format: /vicidial/non_agent_api.php?source=test&function=recording_lookup&stage=pipe&user=X&pass=X&agent_user=X&date=X&duration=Y
-      const recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&agent_user=${agent_user}&date=${queryDate}&duration=Y`;
+      const startDate = dateFrom || defaultFromDate.toISOString().split('T')[0];
+      const endDate = dateTo || today.toISOString().split('T')[0];
       
-      console.log('Fetching recordings from:', recordingUrl.replace(api_pass_encrypted, '***'));
-
-      try {
-        const response = await fetch(recordingUrl, {
-          method: 'GET',
-          headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const text = await response.text();
-        console.log('Recording lookup response length:', text.length);
-        console.log('Recording lookup response preview:', text.substring(0, 500));
+      console.log(`Syncing recordings from ${startDate} to ${endDate}`);
+      
+      // Generate array of dates to sync
+      const datesToSync: string[] = [];
+      const current = new Date(startDate);
+      const end = new Date(endDate);
+      
+      while (current <= end) {
+        datesToSync.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+      }
+      
+      console.log('Dates to sync:', datesToSync);
+      
+      let allRecords: any[] = [];
+      
+      // Fetch recordings for each date
+      for (const queryDate of datesToSync) {
+        const recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&agent_user=${agent_user}&date=${queryDate}&duration=Y`;
         
-        // Parse VICIdial pipe-delimited response
-        // Format: recording_id|lead_id|list_id|campaign_id|call_date|start_epoch|end_epoch|length_in_sec|filename|location|user|...
-        const lines = text.trim().split('\n');
-        const records = [];
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE')) {
-            console.log('Skipping line:', line);
+        console.log('Fetching recordings for date:', queryDate);
+
+        try {
+          const response = await fetch(recordingUrl, {
+            method: 'GET',
+            headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' },
+          });
+
+          if (!response.ok) {
+            console.log(`HTTP error for date ${queryDate}:`, response.status);
             continue;
           }
+
+          const text = await response.text();
+          console.log(`Response for ${queryDate} length:`, text.length);
+          console.log(`Response for ${queryDate} preview:`, text.substring(0, 200));
           
-          const parts = line.split('|');
-          console.log(`Line ${i} parts count:`, parts.length);
+          // Parse VICIdial pipe-delimited response
+          const lines = text.trim().split('\n');
           
-          // VICIdial recording_lookup with stage=pipe returns pipe-delimited data
-          // Typical format: recording_id|lead_id|list_id|campaign_id|call_date|start_epoch|end_epoch|length_in_sec|filename|location|user
-          if (parts.length >= 6) {
-            const recordingId = parts[0]?.trim();
-            const leadId = parts[1]?.trim();
-            const callDate = parts[4]?.trim() || queryDate;
-            const lengthInSec = parts[7]?.trim() || '0';
-            const filename = parts[8]?.trim() || '';
-            const location = parts[9]?.trim() || '';
-            const agentUser = parts[10]?.trim() || agent_user || 'unknown';
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE')) {
+              continue;
+            }
             
-            // Skip if no valid recording ID
-            if (!recordingId || recordingId === '') continue;
+            const parts = line.split('|');
             
-            records.push({
-              system_call_id: recordingId,
-              caller_id: leadId || 'unknown',
-              timestamp: callDate,
-              duration: `${lengthInSec}s`,
-              recording_url: location || filename,
-              user_id: user.id,
-              publisher_id: 'vicidial',
-              buyer_id: leadId || 'unknown',
-              publisher: 'VICIdial',
-              campaign_name: 'VICIdial Import',
-              status: 'pending_review',
-              sub_disposition: 'Imported',
-              reason: 'Auto-imported from VICIdial',
-              summary: 'Pending AI analysis',
-              transcript: 'Pending transcription',
-              agent_name: agentUser,
-              upload_source: 'dialer', // Mark as dialer synced
-            });
+            // VICIdial recording_lookup with stage=pipe returns pipe-delimited data
+            if (parts.length >= 6) {
+              const recordingId = parts[0]?.trim();
+              const leadId = parts[1]?.trim();
+              const callDate = parts[4]?.trim() || queryDate;
+              const lengthInSec = parts[7]?.trim() || '0';
+              const filename = parts[8]?.trim() || '';
+              const location = parts[9]?.trim() || '';
+              const agentUser = parts[10]?.trim() || agent_user || 'unknown';
+              
+              // Skip if no valid recording ID
+              if (!recordingId || recordingId === '') continue;
+              
+              allRecords.push({
+                system_call_id: recordingId,
+                caller_id: leadId || 'unknown',
+                timestamp: callDate,
+                duration: `${lengthInSec}s`,
+                recording_url: location || filename,
+                user_id: user.id,
+                publisher_id: 'vicidial',
+                buyer_id: leadId || 'unknown',
+                publisher: 'VICIdial',
+                campaign_name: 'VICIdial Import',
+                status: 'pending_review',
+                sub_disposition: 'Imported',
+                reason: 'Auto-imported from VICIdial',
+                summary: 'Pending AI analysis',
+                transcript: 'Pending transcription',
+                agent_name: agentUser,
+                upload_source: 'dialer',
+              });
+            }
           }
+        } catch (fetchError) {
+          console.log(`Error fetching date ${queryDate}:`, fetchError);
+          continue;
         }
-
-        console.log('Parsed records:', records.length);
-
-        // Insert new records (skip duplicates based on system_call_id)
-        let insertedCount = 0;
-        for (const record of records) {
-          const { error: insertError } = await supabase
-            .from('call_records')
-            .upsert(record, { onConflict: 'system_call_id', ignoreDuplicates: true });
-
-          if (!insertError) {
-            insertedCount++;
-          } else {
-            console.log('Insert error for record:', record.system_call_id, insertError);
-          }
-        }
-
-        // Update last sync timestamp
-        await supabase
-          .from('dialer_integrations')
-          .update({ last_sync_at: new Date().toISOString() })
-          .eq('id', integration.id);
-
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: `Synced ${insertedCount} records`,
-            total: records.length,
-            inserted: insertedCount 
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } catch (fetchError) {
-        console.error('VICIdial sync failed:', fetchError);
-        const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
-        return new Response(
-          JSON.stringify({ success: false, error: `Sync failed: ${errorMessage}` }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
       }
+      
+      console.log('Total records parsed:', allRecords.length);
+
+      // Insert new records (check for duplicates manually since system_call_id may not have unique constraint)
+      let insertedCount = 0;
+      for (const record of allRecords) {
+        // Check if record already exists
+        const { data: existing } = await supabase
+          .from('call_records')
+          .select('id')
+          .eq('system_call_id', record.system_call_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (existing) {
+          console.log('Skipping duplicate:', record.system_call_id);
+          continue;
+        }
+        
+        const { error: insertError } = await supabase
+          .from('call_records')
+          .insert(record);
+
+        if (!insertError) {
+          insertedCount++;
+        } else {
+          console.log('Insert error for record:', record.system_call_id, insertError);
+        }
+      }
+
+      // Update last sync timestamp
+      await supabase
+        .from('dialer_integrations')
+        .update({ last_sync_at: new Date().toISOString() })
+        .eq('id', integration.id);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Synced ${insertedCount} new records from ${datesToSync.length} days`,
+          total: allRecords.length,
+          inserted: insertedCount,
+          dateRange: { from: startDate, to: endDate }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(

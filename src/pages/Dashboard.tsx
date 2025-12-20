@@ -24,7 +24,19 @@ const Dashboard = () => {
   const { isSyncing, syncRecordings } = useViciSync();
 
   const handleSyncFromDialer = async () => {
-    await syncRecordings();
+    // Sync last 7 days by default, or use selected date range
+    const today = new Date();
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    
+    const fromDate = dateRange?.from 
+      ? dateRange.from.toISOString().split('T')[0] 
+      : sevenDaysAgo.toISOString().split('T')[0];
+    const toDate = dateRange?.to 
+      ? dateRange.to.toISOString().split('T')[0] 
+      : today.toISOString().split('T')[0];
+    
+    await syncRecordings(fromDate, toDate);
     refetch();
   };
 
