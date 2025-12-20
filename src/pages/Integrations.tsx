@@ -420,7 +420,9 @@ const Integrations = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <Textarea
-              placeholder="Paste your dialer API URL here...&#10;Example: http://138.201.244.63/vicidial/non_agent_api.php?source=test&function=recording_lookup&user=676767&pass=test1234&agent_user=25006"
+              placeholder={
+                "Paste your dialer API URL here...\nExample: https://dialer.example.com/vicidial/non_agent_api.php?function=recording_lookup&user=API_USER&pass=API_PASS&agent_user=AGENT_ID"
+              }
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               className="font-mono text-sm min-h-[80px]"
@@ -514,7 +516,7 @@ const Integrations = () => {
               <div className="relative">
                 <Input
                   id="server_url"
-                  placeholder="http://138.201.244.63"
+                  placeholder="https://dialer.example.com"
                   value={formData.server_url}
                   onChange={(e) => setFormData({ ...formData, server_url: e.target.value })}
                   className={formData.server_url ? (serverValidation.valid ? "border-green-500" : "border-destructive") : ""}
@@ -526,7 +528,7 @@ const Integrations = () => {
                 )}
               </div>
               <p className={`text-xs ${serverValidation.valid ? "text-green-500" : "text-muted-foreground"}`}>
-                {formData.server_url ? serverValidation.message : "Your dialer server IP or domain (e.g., http://138.201.244.63)"}
+                {formData.server_url ? serverValidation.message : "Your dialer server IP or domain (include http:// or https://)"}
               </p>
             </div>
 
@@ -546,7 +548,7 @@ const Integrations = () => {
               <div className="flex gap-2">
                 <Input
                   id="agent_user"
-                  placeholder="25006, 25007, 25008"
+                  placeholder="e.g. 1001, 1002, 1003"
                   value={formData.agent_user}
                   onChange={(e) => handleAgentIdChange(e.target.value)}
                   className="flex-1"
@@ -621,7 +623,7 @@ const Integrations = () => {
                   <Label htmlFor="api_user">API User</Label>
                   <Input
                     id="api_user"
-                    placeholder="676767"
+                    placeholder="e.g. API_USER"
                     value={formData.api_user}
                     onChange={(e) => setFormData({ ...formData, api_user: e.target.value })}
                   />
