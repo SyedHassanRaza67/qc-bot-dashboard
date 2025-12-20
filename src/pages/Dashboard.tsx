@@ -8,6 +8,7 @@ import { StatsGrid } from "@/components/StatsGrid";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
 import { SyncIndicator } from "@/components/SyncIndicator";
+import { CallDetailDialog } from "@/components/CallDetailDialog";
 import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
 import { useViciSync } from "@/hooks/useViciSync";
 import { DateRangePicker } from "@/components/DateRangePicker";
@@ -21,6 +22,8 @@ const Dashboard = () => {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter, sourceFilter);
   const { data: stats, refetch: refetchStats } = useCallStats(dateRange, sourceFilter);
@@ -101,7 +104,12 @@ const Dashboard = () => {
     refetch();
   };
 
-  const filteredRecords = records.filter(record => 
+  const handleViewRecord = (recordId: string) => {
+    setSelectedRecordId(recordId);
+    setDialogOpen(true);
+  };
+
+  const filteredRecords = records.filter(record =>
     searchQuery === "" || 
     record.systemCallId.toLowerCase().includes(searchQuery.toLowerCase()) ||
     record.campaignName.toLowerCase().includes(searchQuery.toLowerCase())
@@ -215,7 +223,17 @@ const Dashboard = () => {
           onAutoRefreshToggle={() => setAutoRefresh(!autoRefresh)}
         />
         
-        <CallRecordsTable records={filteredRecords} loading={recordsLoading} />
+        <CallRecordsTable 
+          records={filteredRecords} 
+          loading={recordsLoading} 
+          onViewRecord={handleViewRecord}
+        />
+
+        <CallDetailDialog 
+          recordId={selectedRecordId}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
       </motion.div>
     </div>
   );

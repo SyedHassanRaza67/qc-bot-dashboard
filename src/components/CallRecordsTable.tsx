@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Eye, Copy, Download, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +40,7 @@ interface CallRecord {
 interface CallRecordsTableProps {
   records?: CallRecord[];
   loading?: boolean;
+  onViewRecord?: (recordId: string) => void;
 }
 
 const getStatusBadge = (status: string, summary?: string) => {
@@ -106,8 +106,7 @@ const getSentimentEmoji = (sentiment?: string) => {
   );
 };
 
-export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProps) => {
-  const navigate = useNavigate();
+export const CallRecordsTable = ({ records = [], loading, onViewRecord }: CallRecordsTableProps) => {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
@@ -275,7 +274,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
             <TableRow 
               key={record.id} 
               className={`table-row cursor-pointer ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
-              onClick={() => navigate(`/record/${record.id}`)}
+              onClick={() => onViewRecord?.(record.id)}
             >
               <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
@@ -380,10 +379,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/record/${record.id}`);
-                          }}
+                            onClick={() => onViewRecord?.(record.id)}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
