@@ -56,16 +56,21 @@ serve(async (req) => {
       );
     }
 
-    const { server_url, api_user, api_pass_encrypted } = integration;
+    const { server_url, api_user, api_pass_encrypted, agent_user } = integration;
+    
+    // Clean server URL (remove trailing slashes and any existing paths)
+    const baseUrl = server_url.replace(/\/+$/, '').split('/vicidial')[0];
 
     // Test connection action
     if (action === 'test') {
-      console.log('Testing VICIdial connection to:', server_url);
+      console.log('Testing VICIdial connection to:', baseUrl);
       
       try {
-        // Try to ping the VICIdial API
-        const testUrl = `${server_url}/vicidial/non_agent_api.php?source=test&user=${api_user}&pass=${api_pass_encrypted}&function=version`;
+        // Test using the version function
+        const testUrl = `${baseUrl}/vicidial/non_agent_api.php?source=test&user=${api_user}&pass=${api_pass_encrypted}&function=version`;
         
+        console.log('Test URL:', testUrl.replace(api_pass_encrypted, '***'));
+
         const response = await fetch(testUrl, {
           method: 'GET',
           headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' },
@@ -78,10 +83,15 @@ serve(async (req) => {
         const text = await response.text();
         console.log('VICIdial test response:', text);
 
-        return new Response(
-          JSON.stringify({ success: true, message: 'Connection successful', response: text }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        // Check if response contains VERSION (success indicator)
+        if (text.includes('VERSION:')) {
+          return new Response(
+            JSON.stringify({ success: true, message: 'Connection successful', response: text }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          throw new Error('Invalid response from VICIdial API');
+        }
       } catch (fetchError) {
         console.error('VICIdial connection test failed:', fetchError);
         const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
@@ -99,8 +109,14 @@ serve(async (req) => {
       const today = new Date().toISOString().split('T')[0];
       const queryDate = dateFrom || today;
       
-      // Build recording lookup URL
-      const recordingUrl = `${server_url}/vicidial/non_agent_api.php?source=AI-Analyzer&user=${api_user}&pass=${api_pass_encrypted}&function=recording_lookup&date=${queryDate}&header=YES`;
+      // Build recording lookup URL with correct VICIdial API format
+      // Format: /vicidial/non_agent_api.php?source=test&function=recording_lookup&stage=pipe&user=X&pass=X&agent_user=X&date=X&duration=Y
+      let recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&date=${queryDate}&duration=Y`;
+      
+      // Add agent_user filter if configured
+      if (agent_user) {
+        recordingUrl += `&agent_user=${agent_user}`;
+      }
       
       console.log('Fetching recordings from:', recordingUrl.replace(api_pass_encrypted, '***'));
 
@@ -116,31 +132,44 @@ serve(async (req) => {
 
         const text = await response.text();
         console.log('Recording lookup response length:', text.length);
+        console.log('Recording lookup response preview:', text.substring(0, 500));
         
-        // Parse VICIdial response (pipe-delimited format)
+        // Parse VICIdial pipe-delimited response
+        // Format: recording_id|lead_id|list_id|campaign_id|call_date|start_epoch|end_epoch|length_in_sec|filename|location|user|...
         const lines = text.trim().split('\n');
         const records = [];
         
-        // Skip header line if present
-        const startIndex = lines[0]?.includes('recording_id') ? 1 : 0;
-        
-        for (let i = startIndex; i < lines.length; i++) {
+        for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
-          if (!line) continue;
+          if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE')) {
+            console.log('Skipping line:', line);
+            continue;
+          }
           
           const parts = line.split('|');
-          if (parts.length >= 8) {
-            // VICIdial format: recording_id|lead_id|date|start_time|end_time|length|phone|location
-            const [recordingId, leadId, date, startTime, endTime, length, phone, location] = parts;
+          console.log(`Line ${i} parts count:`, parts.length);
+          
+          // VICIdial recording_lookup with stage=pipe returns pipe-delimited data
+          // Typical format: recording_id|lead_id|list_id|campaign_id|call_date|start_epoch|end_epoch|length_in_sec|filename|location|user
+          if (parts.length >= 6) {
+            const recordingId = parts[0]?.trim();
+            const leadId = parts[1]?.trim();
+            const callDate = parts[4]?.trim() || queryDate;
+            const lengthInSec = parts[7]?.trim() || '0';
+            const filename = parts[8]?.trim() || '';
+            const location = parts[9]?.trim() || '';
+            const agentUser = parts[10]?.trim() || agent_user || 'unknown';
+            
+            // Skip if no valid recording ID
+            if (!recordingId || recordingId === '') continue;
             
             records.push({
               system_call_id: recordingId,
-              caller_id: phone,
-              timestamp: `${date} ${startTime}`,
-              duration: length,
-              recording_url: location,
+              caller_id: leadId || 'unknown',
+              timestamp: callDate,
+              duration: `${lengthInSec}s`,
+              recording_url: location || filename,
               user_id: user.id,
-              // Default values for required fields
               publisher_id: 'vicidial',
               buyer_id: leadId || 'unknown',
               publisher: 'VICIdial',
@@ -150,6 +179,7 @@ serve(async (req) => {
               reason: 'Auto-imported from VICIdial',
               summary: 'Pending AI analysis',
               transcript: 'Pending transcription',
+              agent_name: agentUser,
             });
           }
         }
@@ -165,6 +195,8 @@ serve(async (req) => {
 
           if (!insertError) {
             insertedCount++;
+          } else {
+            console.log('Insert error for record:', record.system_call_id, insertError);
           }
         }
 

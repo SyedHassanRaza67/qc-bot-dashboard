@@ -14,6 +14,7 @@ interface DialerIntegration {
   dialer_type: string;
   server_url: string;
   api_user: string;
+  agent_user: string | null;
   is_active: boolean;
   last_sync_at: string | null;
 }
@@ -30,6 +31,7 @@ const Integrations = () => {
     server_url: "",
     api_user: "",
     api_pass: "",
+    agent_user: "",
     is_active: true,
   });
 
@@ -57,6 +59,7 @@ const Integrations = () => {
           server_url: data.server_url,
           api_user: data.api_user,
           api_pass: "", // Don't show existing password
+          agent_user: data.agent_user || "",
           is_active: data.is_active,
         });
       }
@@ -85,17 +88,19 @@ const Integrations = () => {
       const payload = {
         user_id: user.id,
         dialer_type: "vicidial",
-        server_url: formData.server_url,
+        server_url: formData.server_url.replace(/\/$/, ''), // Remove trailing slash
         api_user: formData.api_user,
         api_pass_encrypted: formData.api_pass || (integration ? "unchanged" : ""),
+        agent_user: formData.agent_user || null,
         is_active: formData.is_active,
       };
 
       if (integration) {
         // Update existing
         const updatePayload: Record<string, unknown> = {
-          server_url: formData.server_url,
+          server_url: formData.server_url.replace(/\/$/, ''),
           api_user: formData.api_user,
+          agent_user: formData.agent_user || null,
           is_active: formData.is_active,
         };
         if (formData.api_pass) {
@@ -237,24 +242,41 @@ const Integrations = () => {
               <Label htmlFor="server_url">Server URL</Label>
               <Input
                 id="server_url"
-                placeholder="https://your-vicidial-server.com"
+                placeholder="http://138.201.244.63"
                 value={formData.server_url}
                 onChange={(e) => setFormData({ ...formData, server_url: e.target.value })}
               />
               <p className="text-xs text-muted-foreground">
-                The base URL of your VICIdial server (without /vicidial path)
+                Your VICIdial server IP or domain (e.g., http://138.201.244.63)
               </p>
             </div>
 
             {/* API User */}
             <div className="space-y-2">
-              <Label htmlFor="api_user">API Username</Label>
+              <Label htmlFor="api_user">API User</Label>
               <Input
                 id="api_user"
-                placeholder="api_user"
+                placeholder="676767"
                 value={formData.api_user}
                 onChange={(e) => setFormData({ ...formData, api_user: e.target.value })}
               />
+              <p className="text-xs text-muted-foreground">
+                The "user" parameter for VICIdial API authentication
+              </p>
+            </div>
+
+            {/* Agent User */}
+            <div className="space-y-2">
+              <Label htmlFor="agent_user">Agent User (Optional)</Label>
+              <Input
+                id="agent_user"
+                placeholder="25006"
+                value={formData.agent_user}
+                onChange={(e) => setFormData({ ...formData, agent_user: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Filter recordings by specific agent (agent_user parameter)
+              </p>
             </div>
 
             {/* API Password */}
