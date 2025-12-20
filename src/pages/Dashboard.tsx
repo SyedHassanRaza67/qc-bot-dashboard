@@ -26,12 +26,10 @@ const Dashboard = () => {
   const { data: stats, refetch: refetchStats } = useCallStats(dateRange, sourceFilter);
   const { isSyncing, syncRecordings } = useViciSync();
 
-  // Real-time subscription when Live mode is enabled
+  // Real-time subscription - always on for auto-updates (transcription status changes)
   useEffect(() => {
-    if (!isLive) return;
-
     const channel = supabase
-      .channel('live-call-records')
+      .channel('dashboard-call-records')
       .on(
         'postgres_changes',
         {
@@ -40,27 +38,45 @@ const Dashboard = () => {
           table: 'call_records'
         },
         (payload) => {
-          console.log('Live update received:', payload);
+          console.log('Real-time update received:', payload);
           refetch();
           refetchStats();
-          if (payload.eventType === 'INSERT') {
-            toast.success('New call record received!', {
-              description: `Call ID: ${(payload.new as any).system_call_id}`,
-            });
+          
+          // Only show toasts in Live mode
+          if (isLive) {
+            if (payload.eventType === 'INSERT') {
+              toast.success('New call record received!', {
+                description: `Call ID: ${(payload.new as any).system_call_id}`,
+              });
+            } else if (payload.eventType === 'UPDATE') {
+              const newData = payload.new as any;
+              const oldData = payload.old as any;
+              // Check if transcription completed
+              if (oldData?.summary === 'Transcribing...' && newData?.summary !== 'Transcribing...') {
+                toast.success('Transcription completed!', {
+                  description: `Record updated with AI analysis`,
+                });
+              }
+            }
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          toast.success('Live mode activated', {
-            description: 'You will receive real-time updates',
-          });
+          console.log('Real-time subscription active');
+          if (isLive) {
+            toast.success('Live mode activated', {
+              description: 'You will receive real-time updates',
+            });
+          }
         }
       });
 
     return () => {
       supabase.removeChannel(channel);
-      toast.info('Live mode deactivated');
+      if (isLive) {
+        toast.info('Live mode deactivated');
+      }
     };
   }, [isLive, refetch, refetchStats]);
 

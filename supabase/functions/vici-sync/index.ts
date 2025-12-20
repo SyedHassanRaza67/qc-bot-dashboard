@@ -298,6 +298,14 @@ serve(async (req) => {
       if (newRecordIds.length > 0) {
         console.log(`Triggering auto-transcription for ${newRecordIds.length} new records`);
         
+        // Mark records as transcribing immediately
+        for (const recordId of newRecordIds) {
+          await supabase
+            .from('call_records')
+            .update({ summary: 'Transcribing...' })
+            .eq('id', recordId);
+        }
+        
         const transcribeRecords = async () => {
           for (const recordId of newRecordIds) {
             try {
@@ -312,6 +320,10 @@ serve(async (req) => {
 
               if (!record || !record.recording_url) {
                 console.log(`Skipping record ${recordId}: no recording URL`);
+                await supabase
+                  .from('call_records')
+                  .update({ summary: 'No recording URL' })
+                  .eq('id', recordId);
                 continue;
               }
 
@@ -322,17 +334,35 @@ serve(async (req) => {
 
               if (!audioResponse.ok) {
                 console.log(`Failed to fetch audio for ${recordId}: ${audioResponse.status}`);
+                await supabase
+                  .from('call_records')
+                  .update({ summary: `Audio fetch failed: ${audioResponse.status}` })
+                  .eq('id', recordId);
                 continue;
               }
 
               const audioBuffer = await audioResponse.arrayBuffer();
-              const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+              
+              // Convert to base64 in chunks (avoid stack overflow)
+              let binaryString = '';
+              const chunkSize = 8192;
+              const audioBytes = new Uint8Array(audioBuffer);
+              for (let i = 0; i < audioBytes.length; i += chunkSize) {
+                const chunk = audioBytes.subarray(i, Math.min(i + chunkSize, audioBytes.length));
+                binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+              }
+              const audioBase64 = btoa(binaryString);
+              
               console.log(`Audio fetched for ${recordId}, size: ${audioBuffer.byteLength} bytes`);
 
               // Call Lovable AI for transcription
               const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
               if (!LOVABLE_API_KEY) {
                 console.error('LOVABLE_API_KEY not configured');
+                await supabase
+                  .from('call_records')
+                  .update({ summary: 'AI API key not configured' })
+                  .eq('id', recordId);
                 continue;
               }
 
@@ -371,6 +401,10 @@ Respond in JSON format only:
 
               if (!aiResponse.ok) {
                 console.log(`AI error for ${recordId}: ${aiResponse.status}`);
+                await supabase
+                  .from('call_records')
+                  .update({ summary: `AI error: ${aiResponse.status}` })
+                  .eq('id', recordId);
                 // Add delay if rate limited
                 if (aiResponse.status === 429) {
                   console.log('Rate limited, waiting 10 seconds...');
@@ -401,6 +435,12 @@ Respond in JSON format only:
                   .eq('id', recordId);
                   
                 console.log(`Transcription completed for ${recordId}`);
+              } else {
+                console.log(`No JSON found in AI response for ${recordId}`);
+                await supabase
+                  .from('call_records')
+                  .update({ summary: 'AI response parsing failed' })
+                  .eq('id', recordId);
               }
 
               // Small delay between records to avoid rate limits
@@ -408,6 +448,10 @@ Respond in JSON format only:
               
             } catch (err) {
               console.error(`Transcription error for ${recordId}:`, err);
+              await supabase
+                .from('call_records')
+                .update({ summary: `Error: ${err instanceof Error ? err.message : 'Unknown'}` })
+                .eq('id', recordId);
             }
           }
           console.log('Background transcription batch completed');

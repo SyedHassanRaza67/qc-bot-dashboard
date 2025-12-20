@@ -39,6 +39,22 @@ const CallDetail = () => {
     };
   }, []);
 
+  // Auto-poll for updates when transcript is pending (transcription in progress)
+  useEffect(() => {
+    const isPending = record?.transcript === 'Pending transcription' || 
+                      record?.summary === 'Transcribing...' ||
+                      record?.summary === 'Pending AI analysis';
+    
+    if (!isPending || !id) return;
+    
+    console.log('Auto-polling for transcription updates...');
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['call-record', id] });
+    }, 5000); // Poll every 5 seconds
+    
+    return () => clearInterval(interval);
+  }, [record?.transcript, record?.summary, id, queryClient]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
