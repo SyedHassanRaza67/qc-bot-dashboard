@@ -41,41 +41,80 @@ const CallDetail = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handlePlayPause = () => {
-    if (!audioUrl) {
+  const handlePlayPause = async () => {
+    if (!record?.recordingUrl) {
       toast.error("No recording available for this call");
       return;
     }
 
-    if (!audioRef.current) {
-      audioRef.current = new Audio(audioUrl);
-      
-      audioRef.current.onloadedmetadata = () => {
-        setDuration(audioRef.current?.duration || 0);
-      };
-      
-      audioRef.current.ontimeupdate = () => {
-        setCurrentTime(audioRef.current?.currentTime || 0);
-      };
-      
-      audioRef.current.onended = () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
-      };
-      
-      audioRef.current.onerror = () => {
-        toast.error("Failed to load audio recording");
-        setIsPlaying(false);
-      };
-    }
-
-    if (isPlaying) {
+    // If we have an audio element and it's playing, pause it
+    if (audioRef.current && isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-    } else {
+      return;
+    }
+
+    // If we already have an audio element, just play it
+    if (audioRef.current) {
       audioRef.current.play();
       setIsPlaying(true);
+      return;
     }
+
+    // Need to create audio element - first get the audio URL
+    let finalAudioUrl = record.recordingUrl;
+    
+    if (isExternalUrl) {
+      // Use proxy for external URLs to avoid CORS/mixed content issues
+      try {
+        const projectId = 'dxwowuztnmjewkncptji';
+        const proxyUrl = `https://${projectId}.supabase.co/functions/v1/proxy-audio`;
+        
+        const response = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: record.recordingUrl }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to proxy audio');
+        }
+        
+        const audioBlob = await response.blob();
+        finalAudioUrl = URL.createObjectURL(audioBlob);
+      } catch (err) {
+        toast.error("Failed to load audio - server may be unreachable");
+        return;
+      }
+    } else if (signedUrl) {
+      finalAudioUrl = signedUrl;
+    } else {
+      toast.error("Audio URL not available");
+      return;
+    }
+
+    audioRef.current = new Audio(finalAudioUrl);
+    
+    audioRef.current.onloadedmetadata = () => {
+      setDuration(audioRef.current?.duration || 0);
+    };
+    
+    audioRef.current.ontimeupdate = () => {
+      setCurrentTime(audioRef.current?.currentTime || 0);
+    };
+    
+    audioRef.current.onended = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+    
+    audioRef.current.onerror = () => {
+      toast.error("Failed to load audio recording");
+      setIsPlaying(false);
+    };
+
+    audioRef.current.play();
+    setIsPlaying(true);
   };
 
   // Reset audio when audio URL changes
@@ -231,6 +270,12 @@ const CallDetail = () => {
                 <div className="text-sm text-muted-foreground">Timestamp</div>
                 <div className="font-mono font-medium">{record.timestamp}</div>
               </div>
+              {record.leadId && (
+                <div>
+                  <div className="text-sm text-muted-foreground">Lead ID</div>
+                  <div className="font-mono font-medium">{record.leadId}</div>
+                </div>
+              )}
               <div>
                 <div className="text-sm text-muted-foreground">Caller ID / Phone</div>
                 <div className="font-mono font-medium flex items-center gap-2">
