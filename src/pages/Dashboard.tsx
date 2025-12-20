@@ -20,7 +20,7 @@ const Dashboard = () => {
   const [sourceFilter, setSourceFilter] = useState("all");
 
   const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter, sourceFilter);
-  const { data: stats } = useCallStats(dateRange);
+  const { data: stats } = useCallStats(dateRange, sourceFilter);
   const { isSyncing, syncRecordings } = useViciSync();
 
   const handleSyncFromDialer = async () => {

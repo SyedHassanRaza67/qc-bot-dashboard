@@ -133,13 +133,20 @@ export const useCallRecord = (id: string) => {
   });
 };
 
-export const useCallStats = (dateRange?: DateRange) => {
+export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
   return useQuery({
-    queryKey: ['call-stats', dateRange?.from?.toISOString(), dateRange?.to?.toISOString()],
+    queryKey: ['call-stats', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), sourceFilter],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('call_records')
-        .select('status, duration, publisher, campaign_name, timestamp');
+        .select('status, duration, publisher, campaign_name, timestamp, upload_source');
+
+      // Apply source filter
+      if (sourceFilter && sourceFilter !== 'all') {
+        query = query.eq('upload_source', sourceFilter);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching call stats:', error);
