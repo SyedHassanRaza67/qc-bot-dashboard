@@ -34,6 +34,7 @@ interface CallRecord {
   transcript?: string;
   recordingUrl?: string;
   uploadSource?: string;
+  agentId?: string;
 }
 
 interface CallRecordsTableProps {
@@ -98,7 +99,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
-  const handlePlayAudio = (e: React.MouseEvent, recordingUrl?: string, id?: string) => {
+  const handlePlayAudio = async (e: React.MouseEvent, recordingUrl?: string, id?: string, uploadSource?: string) => {
     e.stopPropagation();
     
     if (!recordingUrl) {
@@ -121,20 +122,47 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
       audioElement.currentTime = 0;
     }
 
-    // Play new audio
-    const audio = new Audio(recordingUrl);
+    // For VICIdial or external URLs, use directly; for Supabase storage, get signed URL
+    let audioUrl = recordingUrl;
+    
+    // Check if it's a Supabase storage path (not an external URL)
+    if (!recordingUrl.startsWith('http://') && !recordingUrl.startsWith('https://')) {
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data, error } = await supabase.functions.invoke('get-signed-url', {
+          body: { storagePath: recordingUrl }
+        });
+        if (error || !data?.signedUrl) {
+          toast.error("Failed to get audio URL");
+          return;
+        }
+        audioUrl = data.signedUrl;
+      } catch {
+        toast.error("Failed to get audio URL");
+        return;
+      }
+    }
+
+    // Play audio
+    const audio = new Audio(audioUrl);
+    audio.crossOrigin = "anonymous";
     audio.onended = () => {
       setPlayingId(null);
       setAudioElement(null);
     };
     audio.onerror = () => {
-      toast.error("Failed to play audio");
+      toast.error("Failed to play audio - check if URL is accessible");
       setPlayingId(null);
       setAudioElement(null);
     };
-    audio.play();
-    setPlayingId(id || null);
-    setAudioElement(audio);
+    
+    try {
+      await audio.play();
+      setPlayingId(id || null);
+      setAudioElement(audio);
+    } catch (err) {
+      toast.error("Failed to play audio");
+    }
   };
 
   const handleCopyTranscript = (e: React.MouseEvent, transcript?: string) => {
@@ -188,10 +216,10 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
           <TableRow>
             <TableHead className="font-semibold uppercase text-xs w-16">Sr. No.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Timestamp</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Source</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">AI Dispo.</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Dialer Dispo.</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Sub-Disposition</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">Agent ID</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">AI Status</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">Status</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">AI Sub-Disposition</TableHead>
             <TableHead className="font-semibold uppercase text-xs text-center">Agent Response</TableHead>
             <TableHead className="font-semibold uppercase text-xs text-center">Customer Response</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Duration</TableHead>
@@ -211,15 +239,32 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
               <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
               <TableCell>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  record.uploadSource === 'vicidial' 
-                    ? 'bg-blue-500/20 text-blue-500' 
-                    : record.uploadSource === 'manual' 
-                    ? 'bg-purple-500/20 text-purple-500'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  {record.uploadSource === 'vicidial' ? 'VICIdial' : record.uploadSource === 'manual' ? 'Manual' : record.uploadSource || 'Unknown'}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono text-sm">{record.agentName || record.agentId || '—'}</span>
+                  {(record.agentName || record.agentId) && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(record.agentName || record.agentId || '');
+                              toast.success("Agent ID copied");
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Copy Agent ID</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
               </TableCell>
               <TableCell>
                 {getStatusBadge(record.status)}
@@ -251,7 +296,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={(e) => handlePlayAudio(e, record.recordingUrl, record.id)}
+                          onClick={(e) => handlePlayAudio(e, record.recordingUrl, record.id, record.uploadSource)}
                         >
                           {playingId === record.id ? (
                             <Square className="h-4 w-4 text-destructive" />
