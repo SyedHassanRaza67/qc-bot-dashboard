@@ -22,7 +22,7 @@ export interface CallRecord {
   buyerId: string;
   recordingUrl?: string;
   transcript: string;
-  uploadSource: 'manual' | 'dialer';
+  uploadSource: 'manual' | 'vicidial';
 }
 
 export type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';

@@ -64,12 +64,10 @@ serve(async (req) => {
     // Test connection action
     if (action === 'test') {
       console.log('Testing VICIdial connection to:', baseUrl);
-      
+
       try {
-        // Test using the version function
-        const testUrl = `${baseUrl}/vicidial/non_agent_api.php?source=test&user=${api_user}&pass=${api_pass_encrypted}&function=version`;
-        
-        console.log('Test URL:', testUrl.replace(api_pass_encrypted, '***'));
+        const testUrl = `${baseUrl}/vicidial/non_agent_api.php?source=test&user=${encodeURIComponent(api_user)}&pass=${encodeURIComponent(api_pass_encrypted)}&function=version`;
+        console.log('Test URL:', testUrl.replace(encodeURIComponent(api_pass_encrypted), '***'));
 
         const response = await fetch(testUrl, {
           method: 'GET',
@@ -89,9 +87,9 @@ serve(async (req) => {
             JSON.stringify({ success: true, message: 'Connection successful', response: text }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
-        } else {
-          throw new Error('Invalid response from VICIdial API');
         }
+
+        throw new Error('Invalid response from VICIdial API');
       } catch (fetchError) {
         console.error('VICIdial connection test failed:', fetchError);
         const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
@@ -105,137 +103,156 @@ serve(async (req) => {
     // Sync recordings action
     if (action === 'sync') {
       console.log('Syncing recordings from VICIdial');
-      
+
       // Validate agent_user is required for recording_lookup
       if (!agent_user) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Agent User is required for syncing recordings. Please configure it in Integrations settings.' }),
+          JSON.stringify({
+            success: false,
+            error: 'Agent User is required for syncing recordings. Please configure it in Integrations settings.',
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      
+
+      // Support multiple agent IDs (comma separated)
+      const agentUsers = agent_user
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
       // Generate date range to sync (default last 7 days)
       const today = new Date();
       const defaultFromDate = new Date(today);
       defaultFromDate.setDate(today.getDate() - 7);
-      
+
       const startDate = dateFrom || defaultFromDate.toISOString().split('T')[0];
       const endDate = dateTo || today.toISOString().split('T')[0];
-      
-      console.log(`Syncing recordings from ${startDate} to ${endDate}`);
-      
+
+      console.log(`Syncing recordings from ${startDate} to ${endDate} for agents:`, agentUsers);
+
       // Generate array of dates to sync
       const datesToSync: string[] = [];
       const current = new Date(startDate);
       const end = new Date(endDate);
-      
+
       while (current <= end) {
         datesToSync.push(current.toISOString().split('T')[0]);
         current.setDate(current.getDate() + 1);
       }
-      
-      console.log('Dates to sync:', datesToSync);
-      
+
       let allRecords: any[] = [];
-      
-      // Fetch recordings for each date
+
+      const isDateTime = (value: string) =>
+        /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/.test(value);
+
+      const toIsoTimestamp = (startDateStr: string, fallbackDate: string) => {
+        if (startDateStr && isDateTime(startDateStr)) {
+          return new Date(startDateStr.replace(' ', 'T') + 'Z').toISOString();
+        }
+        return new Date(fallbackDate + 'T00:00:00Z').toISOString();
+      };
+
+      // Fetch recordings for each date + each agent
       for (const queryDate of datesToSync) {
-        const recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&agent_user=${agent_user}&date=${queryDate}&duration=Y`;
-        
-        console.log('Fetching recordings for date:', queryDate);
+        for (const agentId of agentUsers) {
+          const recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${encodeURIComponent(api_user)}&pass=${encodeURIComponent(api_pass_encrypted)}&agent_user=${encodeURIComponent(agentId)}&date=${encodeURIComponent(queryDate)}&duration=Y`;
 
-        try {
-          const response = await fetch(recordingUrl, {
-            method: 'GET',
-            headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' },
-          });
+          console.log('Fetching recordings for date:', queryDate, 'agent:', agentId);
 
-          if (!response.ok) {
-            console.log(`HTTP error for date ${queryDate}:`, response.status);
-            continue;
-          }
+          try {
+            const response = await fetch(recordingUrl, {
+              method: 'GET',
+              headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' },
+            });
 
-          const text = await response.text();
-          console.log(`Response for ${queryDate} length:`, text.length);
-          console.log(`Response for ${queryDate} preview:`, text.substring(0, 500));
-          
-          // Parse VICIdial pipe-delimited response
-          // Format: recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
-          const lines = text.trim().split('\n');
-          
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE') || line === 'NO RECORDINGS FOUND') {
+            if (!response.ok) {
+              console.log(`HTTP error for date ${queryDate} agent ${agentId}:`, response.status);
               continue;
             }
-            
-            const parts = line.split('|');
-            console.log(`Parsing line ${i}: ${parts.length} parts`);
-            
-            // VICIdial recording_lookup with stage=pipe returns pipe-delimited data
-            // Expected format: recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
-            if (parts.length >= 6) {
-              const recordingId = parts[0]?.trim();
-              const leadId = parts[1]?.trim();
-              // parts[4] is start_epoch (unix timestamp), parts[5] is start_date (human readable)
-              const startDateStr = parts[5]?.trim() || '';
-              const lengthInSec = parts[7]?.trim() || '0';
-              const filename = parts[8]?.trim() || '';
-              const location = parts[9]?.trim() || '';
-              const agentUser = parts[10]?.trim() || agent_user || 'unknown';
-              
-              // Skip if no valid recording ID (must be a number)
-              if (!recordingId || recordingId === '' || isNaN(Number(recordingId))) {
-                console.log(`Skipping invalid recording ID: ${recordingId}`);
+
+            const text = await response.text();
+
+            // Parse VICIdial pipe-delimited response
+            const lines = text.trim().split('\n');
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE') || line === 'NO RECORDINGS FOUND') {
                 continue;
               }
-              
-              // Parse the start_date to create a valid timestamp
-              // VICIdial format is typically: YYYY-MM-DD HH:MM:SS
-              let timestamp: string;
-              if (startDateStr && startDateStr.match(/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/)) {
-                // Valid date string like "2025-12-17 11:26:22"
-                timestamp = new Date(startDateStr.replace(' ', 'T') + 'Z').toISOString();
+
+              const parts = line.split('|').map((p) => p.trim());
+
+              // Observed formats:
+              // A) start_date|agent_user|lead_id|recording_id|length_in_sec|location
+              // B) recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
+              let startDateStr = '';
+              let recordingId = '';
+              let leadId = '';
+              let lengthInSec = '0';
+              let filename = '';
+              let location = '';
+              let agentFromLine = agentId;
+
+              if (parts.length === 6 && isDateTime(parts[0] || '')) {
+                startDateStr = parts[0] || '';
+                agentFromLine = parts[1] || agentId;
+                leadId = parts[2] || '';
+                recordingId = parts[3] || '';
+                lengthInSec = parts[4] || '0';
+                location = parts[5] || '';
+              } else if (parts.length >= 6) {
+                recordingId = parts[0] || '';
+                leadId = parts[1] || '';
+                startDateStr = parts[5] || '';
+                lengthInSec = parts[7] || '0';
+                filename = parts[8] || '';
+                location = parts[9] || '';
+                agentFromLine = parts[10] || agentId;
               } else {
-                // Fallback to query date at midnight
-                timestamp = new Date(queryDate + 'T00:00:00Z').toISOString();
+                continue;
               }
-              
-              // Format duration as human readable
+
+              // Must be numeric recording ID
+              if (!recordingId || isNaN(Number(recordingId))) {
+                continue;
+              }
+
+              const timestamp = toIsoTimestamp(startDateStr, queryDate);
+
               const durationSecs = parseInt(lengthInSec, 10) || 0;
               const mins = Math.floor(durationSecs / 60);
               const secs = durationSecs % 60;
-              const durationFormatted = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-              
-              console.log(`Record: ID=${recordingId}, Lead=${leadId}, Date=${startDateStr}, Duration=${durationFormatted}`);
-              
+              const durationFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+
               allRecords.push({
-                system_call_id: recordingId,
+                system_call_id: `VICI-${recordingId}`,
                 caller_id: leadId || 'unknown',
-                timestamp: timestamp,
+                timestamp,
                 duration: durationFormatted,
-                recording_url: location || filename,
+                recording_url: location || filename || null,
                 user_id: user.id,
                 publisher_id: 'vicidial',
                 buyer_id: leadId || 'unknown',
                 publisher: 'VICIdial',
                 campaign_name: 'VICIdial Import',
-                status: 'pending_review',
+                status: 'pending',
                 sub_disposition: 'Imported',
                 reason: 'Auto-imported from VICIdial',
                 summary: 'Pending AI analysis',
                 transcript: 'Pending transcription',
-                agent_name: agentUser,
-                upload_source: 'dialer',
+                agent_name: agentFromLine,
+                upload_source: 'vicidial',
               });
             }
+          } catch (fetchError) {
+            console.log(`Error fetching date ${queryDate} agent ${agentId}:`, fetchError);
+            continue;
           }
-        } catch (fetchError) {
-          console.log(`Error fetching date ${queryDate}:`, fetchError);
-          continue;
         }
       }
-      
+
       console.log('Total records parsed:', allRecords.length);
 
       // Insert new records (check for duplicates)
@@ -248,12 +265,12 @@ serve(async (req) => {
           .eq('system_call_id', record.system_call_id)
           .eq('user_id', user.id)
           .maybeSingle();
-        
+
         if (existing) {
           console.log('Skipping duplicate:', record.system_call_id);
           continue;
         }
-        
+
         const { error: insertError } = await supabase
           .from('call_records')
           .insert(record);
@@ -272,12 +289,12 @@ serve(async (req) => {
         .eq('id', integration.id);
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: `Synced ${insertedCount} new records from ${datesToSync.length} days`,
           total: allRecords.length,
           inserted: insertedCount,
-          dateRange: { from: startDate, to: endDate }
+          dateRange: { from: startDate, to: endDate },
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
