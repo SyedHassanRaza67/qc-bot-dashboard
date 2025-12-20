@@ -15,6 +15,7 @@ import CallDetail from "./pages/CallDetail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Admin from "./pages/Admin";
+import Integrations from "./pages/Integrations";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,11 @@ const App = () => (
               <Route path="/admin" element={
                 <ProtectedRoute>
                   <Admin />
+                </ProtectedRoute>
+              } />
+              <Route path="/integrations" element={
+                <ProtectedRoute>
+                  <Integrations />
                 </ProtectedRoute>
               } />
               <Route path="/record/:id" element={

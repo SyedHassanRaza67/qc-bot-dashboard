@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, CloudDownload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
 import { StatsGrid } from "@/components/StatsGrid";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
+import { SyncIndicator } from "@/components/SyncIndicator";
 import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
+import { useViciSync } from "@/hooks/useViciSync";
 import { DateRangePicker } from "@/components/DateRangePicker";
 
 const Dashboard = () => {
@@ -18,6 +20,12 @@ const Dashboard = () => {
 
   const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter);
   const { data: stats } = useCallStats(dateRange);
+  const { isSyncing, syncRecordings } = useViciSync();
+
+  const handleSyncFromDialer = async () => {
+    await syncRecordings();
+    refetch();
+  };
 
   const filteredRecords = records.filter(record => 
     searchQuery === "" || 
@@ -34,9 +42,12 @@ const Dashboard = () => {
         className="max-w-7xl mx-auto px-6"
       >
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Dashboard</h1>
-          <p className="text-muted-foreground">Track, manage, and analyze your call recordings</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Dashboard</h1>
+            <p className="text-muted-foreground">Track, manage, and analyze your call recordings</p>
+          </div>
+          <SyncIndicator isSyncing={isSyncing} />
         </div>
 
         {/* Search & Controls */}
@@ -64,6 +75,16 @@ const Dashboard = () => {
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
             />
+
+            <Button 
+              onClick={handleSyncFromDialer} 
+              variant="outline" 
+              className="rounded-xl"
+              disabled={isSyncing}
+            >
+              <CloudDownload className="h-4 w-4 mr-2" />
+              Sync from Dialer
+            </Button>
 
             <Button onClick={() => refetch()} variant="outline" className="rounded-xl">
               Refresh Data

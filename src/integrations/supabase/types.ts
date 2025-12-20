@@ -89,6 +89,45 @@ export type Database = {
         }
         Relationships: []
       }
+      dialer_integrations: {
+        Row: {
+          api_pass_encrypted: string
+          api_user: string
+          created_at: string
+          dialer_type: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          server_url: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_pass_encrypted: string
+          api_user: string
+          created_at?: string
+          dialer_type?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          server_url: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_pass_encrypted?: string
+          api_user?: string
+          created_at?: string
+          dialer_type?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          server_url?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string

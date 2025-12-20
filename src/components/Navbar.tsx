@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { AudioWaveform, Menu, X, Shield, LogOut } from "lucide-react";
+import { AudioWaveform, Menu, X, Shield, LogOut, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -11,6 +11,7 @@ const navLinks = [
   { name: "Home", path: "/" },
   { name: "Dashboard", path: "/dashboard" },
   { name: "Upload", path: "/upload" },
+  { name: "Integrations", path: "/integrations" },
   { name: "About Us", path: "/about" },
 ];
 
