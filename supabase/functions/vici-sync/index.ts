@@ -157,37 +157,63 @@ serve(async (req) => {
 
           const text = await response.text();
           console.log(`Response for ${queryDate} length:`, text.length);
-          console.log(`Response for ${queryDate} preview:`, text.substring(0, 200));
+          console.log(`Response for ${queryDate} preview:`, text.substring(0, 500));
           
           // Parse VICIdial pipe-delimited response
+          // Format: recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
           const lines = text.trim().split('\n');
           
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE')) {
+            if (!line || line.startsWith('ERROR') || line.startsWith('NOTICE') || line === 'NO RECORDINGS FOUND') {
               continue;
             }
             
             const parts = line.split('|');
+            console.log(`Parsing line ${i}: ${parts.length} parts`);
             
             // VICIdial recording_lookup with stage=pipe returns pipe-delimited data
+            // Expected format: recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
             if (parts.length >= 6) {
               const recordingId = parts[0]?.trim();
               const leadId = parts[1]?.trim();
-              const callDate = parts[4]?.trim() || queryDate;
+              // parts[4] is start_epoch (unix timestamp), parts[5] is start_date (human readable)
+              const startDateStr = parts[5]?.trim() || '';
               const lengthInSec = parts[7]?.trim() || '0';
               const filename = parts[8]?.trim() || '';
               const location = parts[9]?.trim() || '';
               const agentUser = parts[10]?.trim() || agent_user || 'unknown';
               
-              // Skip if no valid recording ID
-              if (!recordingId || recordingId === '') continue;
+              // Skip if no valid recording ID (must be a number)
+              if (!recordingId || recordingId === '' || isNaN(Number(recordingId))) {
+                console.log(`Skipping invalid recording ID: ${recordingId}`);
+                continue;
+              }
+              
+              // Parse the start_date to create a valid timestamp
+              // VICIdial format is typically: YYYY-MM-DD HH:MM:SS
+              let timestamp: string;
+              if (startDateStr && startDateStr.match(/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/)) {
+                // Valid date string like "2025-12-17 11:26:22"
+                timestamp = new Date(startDateStr.replace(' ', 'T') + 'Z').toISOString();
+              } else {
+                // Fallback to query date at midnight
+                timestamp = new Date(queryDate + 'T00:00:00Z').toISOString();
+              }
+              
+              // Format duration as human readable
+              const durationSecs = parseInt(lengthInSec, 10) || 0;
+              const mins = Math.floor(durationSecs / 60);
+              const secs = durationSecs % 60;
+              const durationFormatted = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+              
+              console.log(`Record: ID=${recordingId}, Lead=${leadId}, Date=${startDateStr}, Duration=${durationFormatted}`);
               
               allRecords.push({
                 system_call_id: recordingId,
                 caller_id: leadId || 'unknown',
-                timestamp: callDate,
-                duration: `${lengthInSec}s`,
+                timestamp: timestamp,
+                duration: durationFormatted,
                 recording_url: location || filename,
                 user_id: user.id,
                 publisher_id: 'vicidial',
@@ -212,7 +238,7 @@ serve(async (req) => {
       
       console.log('Total records parsed:', allRecords.length);
 
-      // Insert new records (check for duplicates manually since system_call_id may not have unique constraint)
+      // Insert new records (check for duplicates)
       let insertedCount = 0;
       for (const record of allRecords) {
         // Check if record already exists
