@@ -43,7 +43,18 @@ interface CallRecordsTableProps {
   loading?: boolean;
 }
 
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: string, summary?: string) => {
+  // Show "Transcribing" badge if summary indicates transcription in progress
+  const isTranscribing = summary === 'Transcribing...' || summary === 'Pending AI analysis';
+  
+  if (isTranscribing) {
+    return (
+      <span className="status-badge bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse">
+        Transcribing...
+      </span>
+    );
+  }
+  
   const statusMap = {
     sale: 'status-sale',
     callback: 'status-callback',
@@ -325,7 +336,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
                 </div>
               </TableCell>
               <TableCell>
-                {getStatusBadge(record.status)}
+                {getStatusBadge(record.status, record.summary)}
               </TableCell>
               <TableCell>{record.subDisposition}</TableCell>
               <TableCell className="text-center">
