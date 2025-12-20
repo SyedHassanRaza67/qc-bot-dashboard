@@ -16,7 +16,15 @@ const CallDetail = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: record, isLoading } = useCallRecord(id || '');
-  const { signedUrl, isLoading: urlLoading, error: urlError } = useSignedUrl(record?.recordingUrl || null);
+  
+  // Check if recording URL is external (starts with http/https) or needs signed URL
+  const isExternalUrl = record?.recordingUrl?.startsWith('http://') || record?.recordingUrl?.startsWith('https://');
+  const storagePathForSignedUrl = isExternalUrl ? null : record?.recordingUrl || null;
+  
+  const { signedUrl, isLoading: urlLoading, error: urlError } = useSignedUrl(storagePathForSignedUrl);
+  
+  // Use external URL directly, or signed URL for storage paths
+  const audioUrl = isExternalUrl ? record?.recordingUrl : signedUrl;
 
   useEffect(() => {
     return () => {
@@ -34,13 +42,13 @@ const CallDetail = () => {
   };
 
   const handlePlayPause = () => {
-    if (!signedUrl) {
+    if (!audioUrl) {
       toast.error("No recording available for this call");
       return;
     }
 
     if (!audioRef.current) {
-      audioRef.current = new Audio(signedUrl);
+      audioRef.current = new Audio(audioUrl);
       
       audioRef.current.onloadedmetadata = () => {
         setDuration(audioRef.current?.duration || 0);
@@ -70,7 +78,7 @@ const CallDetail = () => {
     }
   };
 
-  // Reset audio when signed URL changes
+  // Reset audio when audio URL changes
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -79,7 +87,7 @@ const CallDetail = () => {
       setCurrentTime(0);
       setDuration(0);
     }
-  }, [signedUrl]);
+  }, [audioUrl]);
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
@@ -94,14 +102,15 @@ const CallDetail = () => {
   };
 
   const handleDownload = () => {
-    if (!signedUrl) {
+    if (!audioUrl) {
       toast.error("No recording available for download");
       return;
     }
 
     const link = document.createElement('a');
-    link.href = signedUrl;
+    link.href = audioUrl;
     link.download = `call-recording-${record?.id || 'unknown'}.mp3`;
+    link.target = '_blank';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -333,16 +342,16 @@ const CallDetail = () => {
             <CardTitle>Call Recording</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {urlLoading ? (
+            {!isExternalUrl && urlLoading ? (
               <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span>Loading recording...</span>
               </div>
-            ) : urlError ? (
+            ) : !isExternalUrl && urlError ? (
               <div className="text-destructive text-center py-4">
                 {urlError}
               </div>
-            ) : signedUrl ? (
+            ) : audioUrl ? (
               <div className="flex items-center gap-4">
                 <Button
                   size="lg"
