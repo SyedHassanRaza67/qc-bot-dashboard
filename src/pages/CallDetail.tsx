@@ -1,9 +1,10 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Play, Pause, Phone, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, Download, Play, Pause, Phone, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useRef, useEffect } from "react";
 import { useCallRecord } from "@/hooks/useCallRecords";
+import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { toast } from "sonner";
 
 const CallDetail = () => {
@@ -15,6 +16,7 @@ const CallDetail = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: record, isLoading } = useCallRecord(id || '');
+  const { signedUrl, isLoading: urlLoading, error: urlError } = useSignedUrl(record?.recordingUrl || null);
 
   useEffect(() => {
     return () => {
@@ -32,13 +34,13 @@ const CallDetail = () => {
   };
 
   const handlePlayPause = () => {
-    if (!record?.recordingUrl) {
+    if (!signedUrl) {
       toast.error("No recording available for this call");
       return;
     }
 
     if (!audioRef.current) {
-      audioRef.current = new Audio(record.recordingUrl);
+      audioRef.current = new Audio(signedUrl);
       
       audioRef.current.onloadedmetadata = () => {
         setDuration(audioRef.current?.duration || 0);
@@ -68,6 +70,17 @@ const CallDetail = () => {
     }
   };
 
+  // Reset audio when signed URL changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+    }
+  }, [signedUrl]);
+
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return;
     
@@ -81,14 +94,14 @@ const CallDetail = () => {
   };
 
   const handleDownload = () => {
-    if (!record?.recordingUrl) {
+    if (!signedUrl) {
       toast.error("No recording available for download");
       return;
     }
 
     const link = document.createElement('a');
-    link.href = record.recordingUrl;
-    link.download = `call-recording-${record.id}.mp3`;
+    link.href = signedUrl;
+    link.download = `call-recording-${record?.id || 'unknown'}.mp3`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -320,7 +333,16 @@ const CallDetail = () => {
             <CardTitle>Call Recording</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {record.recordingUrl ? (
+            {urlLoading ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span>Loading recording...</span>
+              </div>
+            ) : urlError ? (
+              <div className="text-destructive text-center py-4">
+                {urlError}
+              </div>
+            ) : signedUrl ? (
               <div className="flex items-center gap-4">
                 <Button
                   size="lg"
