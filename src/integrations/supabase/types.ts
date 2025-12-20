@@ -91,6 +91,7 @@ export type Database = {
       }
       dialer_integrations: {
         Row: {
+          agent_user: string | null
           api_pass_encrypted: string
           api_user: string
           created_at: string
@@ -103,6 +104,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agent_user?: string | null
           api_pass_encrypted: string
           api_user: string
           created_at?: string
@@ -115,6 +117,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agent_user?: string | null
           api_pass_encrypted?: string
           api_user?: string
           created_at?: string
