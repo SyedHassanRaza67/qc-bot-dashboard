@@ -44,7 +44,10 @@ const Dashboard = () => {
     searchQuery === "" || 
     record.systemCallId.toLowerCase().includes(searchQuery.toLowerCase()) ||
     record.campaignName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ).map(record => ({
+    ...record,
+    uploadSource: record.uploadSource,
+  }));
 
   return (
     <div className="min-h-screen bg-background pt-24 pb-16">
@@ -123,12 +126,12 @@ const Dashboard = () => {
             Manual Uploads
           </Button>
           <Button
-            variant={sourceFilter === 'dialer' ? 'default' : 'outline'}
-            onClick={() => setSourceFilter('dialer')}
+            variant={sourceFilter === 'vicidial' ? 'default' : 'outline'}
+            onClick={() => setSourceFilter('vicidial')}
             className="rounded-xl gap-2"
           >
             <Phone className="h-4 w-4" />
-            Dialer Synced
+            VICIdial
           </Button>
         </div>
 

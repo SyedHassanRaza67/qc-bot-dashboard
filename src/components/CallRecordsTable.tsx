@@ -33,6 +33,7 @@ interface CallRecord {
   summary: string;
   transcript?: string;
   recordingUrl?: string;
+  uploadSource?: string;
 }
 
 interface CallRecordsTableProps {
@@ -187,6 +188,7 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
           <TableRow>
             <TableHead className="font-semibold uppercase text-xs w-16">Sr. No.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Timestamp</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">Source</TableHead>
             <TableHead className="font-semibold uppercase text-xs">AI Dispo.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Dialer Dispo.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Sub-Disposition</TableHead>
@@ -208,6 +210,17 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
             >
               <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
+              <TableCell>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                  record.uploadSource === 'vicidial' 
+                    ? 'bg-blue-500/20 text-blue-500' 
+                    : record.uploadSource === 'manual' 
+                    ? 'bg-purple-500/20 text-purple-500'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  {record.uploadSource === 'vicidial' ? 'VICIdial' : record.uploadSource === 'manual' ? 'Manual' : record.uploadSource || 'Unknown'}
+                </span>
+              </TableCell>
               <TableCell>
                 {getStatusBadge(record.status)}
               </TableCell>
