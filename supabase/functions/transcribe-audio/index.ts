@@ -73,13 +73,9 @@ serve(async (req) => {
 
     console.log('Audio uploaded successfully:', uploadData.path);
 
-    // Get public URL for the uploaded file
-    const { data: urlData } = supabase.storage
-      .from('audio-recordings')
-      .getPublicUrl(storagePath);
-
-    const recordingUrl = urlData.publicUrl;
-    console.log('Recording URL:', recordingUrl);
+    // Store the storage path (not public URL) - signed URLs will be generated on demand
+    const recordingUrl = storagePath;
+    console.log('Recording path stored:', recordingUrl);
 
     // Use Lovable AI (Gemini) for transcription and analysis
     const analysisPrompt = `You are an expert audio transcription and call analysis AI. 
