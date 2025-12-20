@@ -21,6 +21,7 @@ import {
 interface CallRecord {
   id: string;
   timestamp: string;
+  leadId?: string;
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
   dialerDisposition?: string;
   agentName?: string;
@@ -122,11 +123,37 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
       audioElement.currentTime = 0;
     }
 
-    // For VICIdial or external URLs, use directly; for Supabase storage, get signed URL
+    // For external URLs (HTTP/HTTPS), use proxy to avoid CORS/mixed content issues
     let audioUrl = recordingUrl;
     
-    // Check if it's a Supabase storage path (not an external URL)
-    if (!recordingUrl.startsWith('http://') && !recordingUrl.startsWith('https://')) {
+    if (recordingUrl.startsWith('http://') || recordingUrl.startsWith('https://')) {
+      // Use proxy edge function for external URLs
+      try {
+        const { supabase } = await import("@/integrations/supabase/client");
+        const projectId = 'dxwowuztnmjewkncptji';
+        const proxyUrl = `https://${projectId}.supabase.co/functions/v1/proxy-audio`;
+        
+        const response = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: recordingUrl }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to proxy audio');
+        }
+        
+        const audioBlob = await response.blob();
+        audioUrl = URL.createObjectURL(audioBlob);
+      } catch (err) {
+        console.error('Proxy error:', err);
+        toast.error("Failed to load audio - server may be unreachable");
+        return;
+      }
+    } else {
+      // For Supabase storage paths, get signed URL
       try {
         const { supabase } = await import("@/integrations/supabase/client");
         const { data, error } = await supabase.functions.invoke('get-signed-url', {
@@ -145,13 +172,16 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
 
     // Play audio
     const audio = new Audio(audioUrl);
-    audio.crossOrigin = "anonymous";
     audio.onended = () => {
       setPlayingId(null);
       setAudioElement(null);
+      // Revoke blob URL if we created one
+      if (audioUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(audioUrl);
+      }
     };
     audio.onerror = () => {
-      toast.error("Failed to play audio - check if URL is accessible");
+      toast.error("Failed to play audio");
       setPlayingId(null);
       setAudioElement(null);
     };
@@ -216,9 +246,9 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
           <TableRow>
             <TableHead className="font-semibold uppercase text-xs w-16">Sr. No.</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Timestamp</TableHead>
+            <TableHead className="font-semibold uppercase text-xs">Lead ID</TableHead>
             <TableHead className="font-semibold uppercase text-xs">Agent ID</TableHead>
             <TableHead className="font-semibold uppercase text-xs">AI Status</TableHead>
-            <TableHead className="font-semibold uppercase text-xs">Status</TableHead>
             <TableHead className="font-semibold uppercase text-xs">AI Sub-Disposition</TableHead>
             <TableHead className="font-semibold uppercase text-xs text-center">Agent Response</TableHead>
             <TableHead className="font-semibold uppercase text-xs text-center">Customer Response</TableHead>
@@ -238,6 +268,34 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
             >
               <TableCell className="font-semibold text-primary">{index + 1}</TableCell>
               <TableCell className="font-mono text-sm">{record.timestamp}</TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1">
+                  <span className="font-mono text-sm">{record.leadId || '—'}</span>
+                  {record.leadId && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(record.leadId || '');
+                              toast.success("Lead ID copied");
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Copy Lead ID</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1">
                   <span className="font-mono text-sm">{record.agentName || record.agentId || '—'}</span>
@@ -268,13 +326,6 @@ export const CallRecordsTable = ({ records = [], loading }: CallRecordsTableProp
               </TableCell>
               <TableCell>
                 {getStatusBadge(record.status)}
-              </TableCell>
-              <TableCell>
-                {record.dialerDisposition ? (
-                  <span className="text-sm text-muted-foreground">{record.dialerDisposition}</span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
               </TableCell>
               <TableCell>{record.subDisposition}</TableCell>
               <TableCell className="text-center">

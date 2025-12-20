@@ -26,6 +26,7 @@ export type Database = {
           customer_response: string | null
           duration: string
           id: string
+          lead_id: string | null
           publisher: string
           publisher_id: string
           reason: string
@@ -51,6 +52,7 @@ export type Database = {
           customer_response?: string | null
           duration: string
           id?: string
+          lead_id?: string | null
           publisher: string
           publisher_id: string
           reason: string
@@ -76,6 +78,7 @@ export type Database = {
           customer_response?: string | null
           duration?: string
           id?: string
+          lead_id?: string | null
           publisher?: string
           publisher_id?: string
           reason?: string

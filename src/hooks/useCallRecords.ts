@@ -8,6 +8,7 @@ export interface CallRecord {
   timestamp: string;
   rawTimestamp: Date;
   callerId: string;
+  leadId?: string;
   status: 'sale' | 'callback' | 'not-interested' | 'disqualified' | 'pending';
   agentName?: string;
   subDisposition: string;
@@ -71,6 +72,7 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string, sou
         timestamp: new Date(record.timestamp).toLocaleString(),
         rawTimestamp: new Date(record.timestamp),
         callerId: record.caller_id,
+        leadId: (record as any).lead_id || undefined,
         status: record.status as CallRecord['status'],
         agentName: record.agent_name || undefined,
         subDisposition: record.sub_disposition,
@@ -113,6 +115,7 @@ export const useCallRecord = (id: string) => {
         timestamp: new Date(data.timestamp).toLocaleString(),
         rawTimestamp: new Date(data.timestamp),
         callerId: data.caller_id,
+        leadId: (data as any).lead_id || undefined,
         status: data.status as CallRecord['status'],
         agentName: data.agent_name || undefined,
         subDisposition: data.sub_disposition,
@@ -127,6 +130,7 @@ export const useCallRecord = (id: string) => {
         buyerId: data.buyer_id,
         recordingUrl: data.recording_url || undefined,
         transcript: data.transcript,
+        uploadSource: (data as any).upload_source || 'manual',
       } as CallRecord;
     },
     enabled: !!id,

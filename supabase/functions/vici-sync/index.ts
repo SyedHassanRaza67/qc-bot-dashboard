@@ -229,6 +229,7 @@ serve(async (req) => {
               allRecords.push({
                 system_call_id: `VICI-${recordingId}`,
                 caller_id: leadId || 'unknown',
+                lead_id: leadId || null,
                 timestamp,
                 duration: durationFormatted,
                 recording_url: location || filename || null,
