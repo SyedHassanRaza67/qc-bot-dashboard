@@ -106,17 +106,20 @@ serve(async (req) => {
     if (action === 'sync') {
       console.log('Syncing recordings from VICIdial');
       
+      // Validate agent_user is required for recording_lookup
+      if (!agent_user) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Agent User is required for syncing recordings. Please configure it in Integrations settings.' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       const today = new Date().toISOString().split('T')[0];
       const queryDate = dateFrom || today;
       
       // Build recording lookup URL with correct VICIdial API format
       // Format: /vicidial/non_agent_api.php?source=test&function=recording_lookup&stage=pipe&user=X&pass=X&agent_user=X&date=X&duration=Y
-      let recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&date=${queryDate}&duration=Y`;
-      
-      // Add agent_user filter if configured
-      if (agent_user) {
-        recordingUrl += `&agent_user=${agent_user}`;
-      }
+      const recordingUrl = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${api_user}&pass=${api_pass_encrypted}&agent_user=${agent_user}&date=${queryDate}&duration=Y`;
       
       console.log('Fetching recordings from:', recordingUrl.replace(api_pass_encrypted, '***'));
 
