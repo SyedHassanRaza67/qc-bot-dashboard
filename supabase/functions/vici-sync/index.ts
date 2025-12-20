@@ -258,6 +258,8 @@ serve(async (req) => {
 
       // Insert new records (check for duplicates)
       let insertedCount = 0;
+      const newRecordIds: string[] = [];
+      
       for (const record of allRecords) {
         // Check if record already exists
         const { data: existing } = await supabase
@@ -272,12 +274,15 @@ serve(async (req) => {
           continue;
         }
 
-        const { error: insertError } = await supabase
+        const { data: insertedRecord, error: insertError } = await supabase
           .from('call_records')
-          .insert(record);
+          .insert(record)
+          .select('id')
+          .single();
 
-        if (!insertError) {
+        if (!insertError && insertedRecord) {
           insertedCount++;
+          newRecordIds.push(insertedRecord.id);
         } else {
           console.log('Insert error for record:', record.system_call_id, insertError);
         }
@@ -289,12 +294,136 @@ serve(async (req) => {
         .update({ last_sync_at: new Date().toISOString() })
         .eq('id', integration.id);
 
+      // Trigger automatic transcription for new records in the background
+      if (newRecordIds.length > 0) {
+        console.log(`Triggering auto-transcription for ${newRecordIds.length} new records`);
+        
+        const transcribeRecords = async () => {
+          for (const recordId of newRecordIds) {
+            try {
+              console.log(`Auto-transcribing record: ${recordId}`);
+              
+              // Fetch the record
+              const { data: record } = await supabase
+                .from('call_records')
+                .select('*')
+                .eq('id', recordId)
+                .single();
+
+              if (!record || !record.recording_url) {
+                console.log(`Skipping record ${recordId}: no recording URL`);
+                continue;
+              }
+
+              // Fetch the audio file
+              const audioResponse = await fetch(record.recording_url, {
+                headers: { 'Accept': 'audio/*' },
+              });
+
+              if (!audioResponse.ok) {
+                console.log(`Failed to fetch audio for ${recordId}: ${audioResponse.status}`);
+                continue;
+              }
+
+              const audioBuffer = await audioResponse.arrayBuffer();
+              const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+              console.log(`Audio fetched for ${recordId}, size: ${audioBuffer.byteLength} bytes`);
+
+              // Call Lovable AI for transcription
+              const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+              if (!LOVABLE_API_KEY) {
+                console.error('LOVABLE_API_KEY not configured');
+                continue;
+              }
+
+              const systemPrompt = `You are an expert call center quality analyst. Analyze this call recording and provide:
+1. Complete transcript formatted as: Agent: [text]\nCustomer: [text]
+2. AI disposition (status): sale, callback, not-interested, disqualified, or pending
+3. Sub-disposition with detail
+4. Brief summary (2-3 sentences)
+5. Main reason for outcome
+6. Agent sentiment: excellent, good, average, bad, or very-bad
+7. Customer sentiment: excellent, good, average, bad, or very-bad
+
+Respond in JSON format only:
+{"transcript":"...","status":"...","sub_disposition":"...","summary":"...","reason":"...","agent_response":"...","customer_response":"..."}`;
+
+              const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  model: 'google/gemini-2.5-flash',
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    { 
+                      role: 'user', 
+                      content: [
+                        { type: 'text', text: 'Transcribe and analyze this call recording. Respond with JSON only.' },
+                        { type: 'image_url', image_url: { url: `data:audio/mpeg;base64,${audioBase64}` } }
+                      ]
+                    }
+                  ],
+                }),
+              });
+
+              if (!aiResponse.ok) {
+                console.log(`AI error for ${recordId}: ${aiResponse.status}`);
+                // Add delay if rate limited
+                if (aiResponse.status === 429) {
+                  console.log('Rate limited, waiting 10 seconds...');
+                  await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+                continue;
+              }
+
+              const aiData = await aiResponse.json();
+              const content = aiData.choices?.[0]?.message?.content || '';
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              
+              if (jsonMatch) {
+                const result = JSON.parse(jsonMatch[0]);
+                
+                await supabase
+                  .from('call_records')
+                  .update({
+                    transcript: result.transcript,
+                    status: result.status,
+                    sub_disposition: result.sub_disposition,
+                    summary: result.summary,
+                    reason: result.reason,
+                    agent_response: result.agent_response,
+                    customer_response: result.customer_response,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', recordId);
+                  
+                console.log(`Transcription completed for ${recordId}`);
+              }
+
+              // Small delay between records to avoid rate limits
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+            } catch (err) {
+              console.error(`Transcription error for ${recordId}:`, err);
+            }
+          }
+          console.log('Background transcription batch completed');
+        };
+
+        // Run transcription in background
+        (globalThis as any).EdgeRuntime?.waitUntil?.(transcribeRecords()) || transcribeRecords();
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Synced ${insertedCount} new records from ${datesToSync.length} days`,
+          message: `Synced ${insertedCount} new records from ${datesToSync.length} days. Transcription started in background.`,
           total: allRecords.length,
           inserted: insertedCount,
+          transcribing: newRecordIds.length,
           dateRange: { from: startDate, to: endDate },
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
