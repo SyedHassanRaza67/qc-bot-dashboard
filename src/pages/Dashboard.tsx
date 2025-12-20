@@ -15,19 +15,56 @@ import { DateRangePicker } from "@/components/DateRangePicker";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// Local storage keys for filter persistence
+const STORAGE_KEYS = {
+  sourceFilter: 'dashboard-source-filter',
+  statusFilter: 'dashboard-status-filter',
+};
+
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Restore filters from localStorage
+  const [statusFilter, setStatusFilter] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.statusFilter) || "all";
+  });
+  const [sourceFilter, setSourceFilter] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.sourceFilter) || "all";
+  });
+  
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter, sourceFilter);
+  // Persist filters to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.sourceFilter, sourceFilter);
+  }, [sourceFilter]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.statusFilter, statusFilter);
+  }, [statusFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange, statusFilter, sourceFilter, searchQuery]);
+
+  const { data: paginatedData, isLoading: recordsLoading, refetch } = useCallRecords(
+    dateRange, 
+    statusFilter, 
+    sourceFilter, 
+    currentPage
+  );
   const { data: stats, refetch: refetchStats } = useCallStats(dateRange, sourceFilter);
   const { isSyncing, syncRecordings } = useViciSync();
+
+  const records = paginatedData?.records || [];
+  const totalCount = paginatedData?.totalCount || 0;
+  const totalPages = paginatedData?.totalPages || 1;
 
   // Real-time subscription - always on for auto-updates (transcription status changes)
   useEffect(() => {
@@ -109,6 +146,14 @@ const Dashboard = () => {
     setDialogOpen(true);
   };
 
+  const handleSourceFilterChange = (filter: string) => {
+    setSourceFilter(filter);
+  };
+
+  const handleStatusFilterChange = (filter: string) => {
+    setStatusFilter(filter);
+  };
+
   const filteredRecords = records.filter(record =>
     searchQuery === "" || 
     record.systemCallId.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -123,7 +168,7 @@ const Dashboard = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: 0.3 }}
         className="max-w-7xl mx-auto px-6"
       >
         {/* Header */}
@@ -193,14 +238,14 @@ const Dashboard = () => {
         <div className="flex gap-3 mb-6">
           <Button
             variant={sourceFilter === 'all' ? 'default' : 'outline'}
-            onClick={() => setSourceFilter('all')}
+            onClick={() => handleSourceFilterChange('all')}
             className="rounded-xl"
           >
             All Calls
           </Button>
           <Button
             variant={sourceFilter === 'manual' ? 'default' : 'outline'}
-            onClick={() => setSourceFilter('manual')}
+            onClick={() => handleSourceFilterChange('manual')}
             className="rounded-xl gap-2"
           >
             <Upload className="h-4 w-4" />
@@ -208,7 +253,7 @@ const Dashboard = () => {
           </Button>
           <Button
             variant={sourceFilter === 'vicidial' ? 'default' : 'outline'}
-            onClick={() => setSourceFilter('vicidial')}
+            onClick={() => handleSourceFilterChange('vicidial')}
             className="rounded-xl gap-2"
           >
             <Phone className="h-4 w-4" />
@@ -216,7 +261,7 @@ const Dashboard = () => {
           </Button>
         </div>
 
-        <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={setStatusFilter} />
+        <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={handleStatusFilterChange} />
         
         <CampaignFilters
           autoRefresh={autoRefresh}
@@ -227,6 +272,10 @@ const Dashboard = () => {
           records={filteredRecords} 
           loading={recordsLoading} 
           onViewRecord={handleViewRecord}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          onPageChange={setCurrentPage}
         />
 
         <CallDetailDialog 
