@@ -1,18 +1,22 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Play, Pause, Phone, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Play, Pause, Phone, CheckCircle, XCircle, Loader2, Mic, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useRef, useEffect } from "react";
 import { useCallRecord } from "@/hooks/useCallRecords";
 import { useSignedUrl } from "@/hooks/useSignedUrl";
 import { toast } from "sonner";
-
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 const CallDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: record, isLoading } = useCallRecord(id || '');
@@ -185,6 +189,37 @@ const CallDetail = () => {
     const statusBonus = record?.status === 'sale' ? 20 : record?.status === 'callback' ? 10 : 0;
     const agentBonus = record?.agentResponse === 'excellent' ? 10 : record?.agentResponse === 'good' ? 5 : 0;
     return Math.min(100, baseScore + statusBonus + agentBonus);
+  };
+
+  const isPendingTranscription = record?.transcript === 'Pending transcription' || !record?.transcript;
+  const isVicidialRecord = record?.uploadSource === 'vicidial';
+
+  const handleTranscribe = async () => {
+    if (!id) return;
+    
+    setIsTranscribing(true);
+    toast.info('Starting AI transcription... This may take a minute.');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('transcribe-vicidial', {
+        body: { call_record_id: id }
+      });
+
+      if (error) {
+        console.error('Transcription error:', error);
+        toast.error(error.message || 'Transcription failed');
+        return;
+      }
+
+      toast.success('Transcription completed successfully!');
+      // Refresh the call record data
+      queryClient.invalidateQueries({ queryKey: ['call-record', id] });
+    } catch (err) {
+      console.error('Transcription error:', err);
+      toast.error('Failed to transcribe recording');
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   if (isLoading) {
@@ -444,15 +479,64 @@ const CallDetail = () => {
 
         {/* Transcript */}
         <Card>
-          <CardHeader>
-            <CardTitle>Conversation Transcript</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Conversation Transcript
+                {isPendingTranscription && isVicidialRecord && (
+                  <Badge variant="secondary" className="ml-2">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    Pending
+                  </Badge>
+                )}
+                {!isPendingTranscription && (
+                  <Badge variant="default" className="ml-2 bg-success">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Transcribed
+                  </Badge>
+                )}
+              </CardTitle>
+            </div>
+            {isPendingTranscription && isVicidialRecord && record.recordingUrl && (
+              <Button 
+                onClick={handleTranscribe}
+                disabled={isTranscribing}
+                className="gap-2"
+              >
+                {isTranscribing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Transcribing...
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-4 w-4" />
+                    Transcribe Now
+                  </>
+                )}
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
-            <div className="bg-muted/30 rounded-lg p-6 max-h-[600px] overflow-y-auto">
-              <pre className="font-mono text-sm whitespace-pre-wrap leading-relaxed">
-                {record.transcript}
-              </pre>
-            </div>
+            {isPendingTranscription ? (
+              <div className="bg-muted/30 rounded-lg p-6 text-center">
+                <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  This call recording has not been transcribed yet.
+                </p>
+                {isVicidialRecord && record.recordingUrl && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Click "Transcribe Now" to generate an AI transcript and analysis.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-muted/30 rounded-lg p-6 max-h-[600px] overflow-y-auto">
+                <pre className="font-mono text-sm whitespace-pre-wrap leading-relaxed">
+                  {record.transcript}
+                </pre>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
