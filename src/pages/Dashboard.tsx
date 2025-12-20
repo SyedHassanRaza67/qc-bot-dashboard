@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw, CloudDownload } from "lucide-react";
+import { Search, RefreshCw, CloudDownload, Upload, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -17,8 +17,9 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
 
-  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter);
+  const { data: records = [], isLoading: recordsLoading, refetch } = useCallRecords(dateRange, statusFilter, sourceFilter);
   const { data: stats } = useCallStats(dateRange);
   const { isSyncing, syncRecordings } = useViciSync();
 
@@ -90,6 +91,33 @@ const Dashboard = () => {
               Refresh Data
             </Button>
           </div>
+        </div>
+
+        {/* Source Filter Buttons */}
+        <div className="flex gap-3 mb-6">
+          <Button
+            variant={sourceFilter === 'all' ? 'default' : 'outline'}
+            onClick={() => setSourceFilter('all')}
+            className="rounded-xl"
+          >
+            All Calls
+          </Button>
+          <Button
+            variant={sourceFilter === 'manual' ? 'default' : 'outline'}
+            onClick={() => setSourceFilter('manual')}
+            className="rounded-xl gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Manual Uploads
+          </Button>
+          <Button
+            variant={sourceFilter === 'dialer' ? 'default' : 'outline'}
+            onClick={() => setSourceFilter('dialer')}
+            className="rounded-xl gap-2"
+          >
+            <Phone className="h-4 w-4" />
+            Dialer Synced
+          </Button>
         </div>
 
         <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={setStatusFilter} />

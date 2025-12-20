@@ -22,6 +22,7 @@ export interface CallRecord {
   buyerId: string;
   recordingUrl?: string;
   transcript: string;
+  uploadSource: 'manual' | 'dialer';
 }
 
 export type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
@@ -31,9 +32,9 @@ export interface DateRangeFilter {
   to?: Date;
 }
 
-export const useCallRecords = (dateRange?: DateRange, statusFilter?: string) => {
+export const useCallRecords = (dateRange?: DateRange, statusFilter?: string, sourceFilter?: string) => {
   return useQuery({
-    queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter],
+    queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter, sourceFilter],
     queryFn: async () => {
       let query = supabase
         .from('call_records')
@@ -51,6 +52,11 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string) => 
       // Apply status filter
       if (statusFilter && statusFilter !== 'all') {
         query = query.eq('status', statusFilter);
+      }
+
+      // Apply source filter
+      if (sourceFilter && sourceFilter !== 'all') {
+        query = query.eq('upload_source', sourceFilter);
       }
 
       const { data, error } = await query;
@@ -79,6 +85,7 @@ export const useCallRecords = (dateRange?: DateRange, statusFilter?: string) => 
         buyerId: record.buyer_id,
         recordingUrl: record.recording_url || undefined,
         transcript: record.transcript,
+        uploadSource: (record as any).upload_source || 'manual',
       })) as CallRecord[];
     },
   });

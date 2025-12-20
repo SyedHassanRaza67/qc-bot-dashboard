@@ -180,6 +180,7 @@ serve(async (req) => {
               summary: 'Pending AI analysis',
               transcript: 'Pending transcription',
               agent_name: agentUser,
+              upload_source: 'dialer', // Mark as dialer synced
             });
           }
         }
