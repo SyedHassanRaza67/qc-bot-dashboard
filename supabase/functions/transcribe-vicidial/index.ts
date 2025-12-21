@@ -130,7 +130,21 @@ serve(async (req) => {
       }),
     });
 
-    if (!aiResponse.ok) throw new Error(`AI failed: ${aiResponse.status}`);
+    if (!aiResponse.ok) {
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ error: 'AI credits exhausted. Please add credits to your Lovable workspace at Settings → Workspace → Usage.' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded. Please wait a moment and try again.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw new Error(`AI failed: ${aiResponse.status}`);
+    }
 
     const data = await aiResponse.json();
     const content = data.choices?.[0]?.message?.content || '';
