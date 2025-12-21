@@ -294,30 +294,19 @@ serve(async (req) => {
         .update({ last_sync_at: new Date().toISOString() })
         .eq('id', integration.id);
 
-      // Trigger automatic transcription for new records
+      // Fire-and-forget: Trigger transcription without waiting (returns immediately)
       if (newRecordIds.length > 0) {
-        console.log(`Triggering transcribe-pending for ${newRecordIds.length} new records`);
+        console.log(`Triggering transcribe-pending for ${newRecordIds.length} new records (fire-and-forget)`);
         
-        // Call the dedicated transcription function
-        try {
-          const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-pending`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ recordIds: newRecordIds }),
-          });
-          
-          if (transcribeResponse.ok) {
-            const transcribeResult = await transcribeResponse.json();
-            console.log('Transcription triggered:', transcribeResult);
-          } else {
-            console.error('Failed to trigger transcription:', transcribeResponse.status);
-          }
-        } catch (transcribeError) {
-          console.error('Error triggering transcription:', transcribeError);
-        }
+        // Don't await - let it run in background
+        fetch(`${supabaseUrl}/functions/v1/transcribe-pending`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ recordIds: newRecordIds }),
+        }).catch(err => console.error('Transcription trigger error:', err));
       }
 
       return new Response(
