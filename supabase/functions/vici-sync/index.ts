@@ -103,21 +103,35 @@ serve(async (req) => {
       const toIso = (s: string, d: string) => isDateTime(s) ? new Date(s.replace(' ', 'T') + 'Z').toISOString() : new Date(d + 'T00:00:00Z').toISOString();
 
       // Fetch recordings
+      console.log(`Starting sync for dates: ${startDate} to ${endDate}, agents: ${agentUsers.join(', ')}`);
+      
       for (const queryDate of datesToSync) {
         for (const agentId of agentUsers) {
           try {
             const url = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${encodeURIComponent(api_user)}&pass=${encodeURIComponent(api_pass_encrypted)}&agent_user=${encodeURIComponent(agentId)}&date=${encodeURIComponent(queryDate)}&duration=Y`;
+            console.log(`Fetching: agent=${agentId}, date=${queryDate}`);
+            
             const response = await fetch(url, { method: 'GET', headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' } });
-            if (!response.ok) continue;
+            if (!response.ok) {
+              console.log(`HTTP error: ${response.status}`);
+              continue;
+            }
 
             const text = await response.text();
+            console.log(`Response for ${agentId}/${queryDate}: ${text.substring(0, 300)}`);
+            
             const lines = text.trim().split('\n');
 
             for (const line of lines) {
               const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith('ERROR') || trimmed.startsWith('NOTICE') || trimmed === 'NO RECORDINGS FOUND') continue;
+              if (!trimmed || trimmed.startsWith('ERROR') || trimmed.startsWith('NOTICE') || trimmed === 'NO RECORDINGS FOUND') {
+                console.log(`Skipping line: ${trimmed.substring(0, 100)}`);
+                continue;
+              }
 
               const parts = trimmed.split('|').map(p => p.trim());
+              console.log(`Parsing line with ${parts.length} parts: ${parts.slice(0, 5).join('|')}`);
+              
               let startDateStr = '', recordingId = '', leadId = '', lengthInSec = '0', location = '', agentFromLine = agentId;
 
               if (parts.length === 6 && isDateTime(parts[0])) {
@@ -125,9 +139,15 @@ serve(async (req) => {
               } else if (parts.length >= 6) {
                 recordingId = parts[0]; leadId = parts[1]; startDateStr = parts[5];
                 lengthInSec = parts[7] || '0'; location = parts[9] || ''; agentFromLine = parts[10] || agentId;
-              } else continue;
+              } else {
+                console.log(`Skipping line: insufficient parts (${parts.length})`);
+                continue;
+              }
 
-              if (!recordingId || isNaN(Number(recordingId))) continue;
+              if (!recordingId || isNaN(Number(recordingId))) {
+                console.log(`Skipping: invalid recordingId=${recordingId}`);
+                continue;
+              }
 
               const durationSecs = parseInt(lengthInSec, 10) || 0;
               const mins = Math.floor(durationSecs / 60);

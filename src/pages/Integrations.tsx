@@ -396,7 +396,7 @@ const Integrations = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center gap-3">
             <Settings className="h-8 w-8 text-primary" />
-            Smart Dialer Bridge
+            Integrations
           </h1>
           <p className="text-muted-foreground">
             Universal call center integration - Import from any dialer API

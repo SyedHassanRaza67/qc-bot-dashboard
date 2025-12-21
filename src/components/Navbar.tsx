@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { AudioWaveform, Menu, X, Shield, LogOut, Settings } from "lucide-react";
+import { AudioWaveform, Menu, X, Shield, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { ThemeToggle } from "./ThemeToggle";
@@ -115,20 +115,8 @@ export const Navbar = () => {
             )}
           </div>
 
-          {/* Right side: Settings + Theme Toggle + Auth */}
+          {/* Right side: Theme Toggle + Auth */}
           <div className="flex items-center gap-2">
-            {user && (
-              <Link
-                to="/settings"
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  location.pathname === "/settings"
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                }`}
-              >
-                <Settings className="h-5 w-5" />
-              </Link>
-            )}
             <ThemeToggle />
             {user ? (
               <Button
@@ -185,20 +173,6 @@ export const Navbar = () => {
                     </Link>
                   );
                 })}
-                {user && (
-                  <Link
-                    to="/settings"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                      location.pathname === "/settings"
-                        ? "bg-primary/20 text-primary"
-                        : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                    }`}
-                  >
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </Link>
-                )}
                 {isAdmin && (
                   <Link
                     to="/admin"
