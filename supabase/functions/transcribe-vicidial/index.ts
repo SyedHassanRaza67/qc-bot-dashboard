@@ -38,27 +38,70 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    
+    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
+
+    // ========== AUTHENTICATION CHECK ==========
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.log('Missing authorization header');
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create user client to verify authentication
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      console.log('Authentication failed:', userError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('Authenticated user:', user.id);
+    // ========== END AUTHENTICATION CHECK ==========
+
     const { call_record_id } = await req.json();
     if (!call_record_id) {
       return new Response(JSON.stringify({ error: 'call_record_id is required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: record, error: fetchError } = await supabase.from('call_records').select('*').eq('id', call_record_id).single();
+    // ========== OWNERSHIP VERIFICATION ==========
+    // Verify the authenticated user owns this call record
+    const { data: record, error: fetchError } = await supabase
+      .from('call_records')
+      .select('*')
+      .eq('id', call_record_id)
+      .eq('user_id', user.id)  // Verify ownership
+      .single();
+      
     if (fetchError || !record) {
-      return new Response(JSON.stringify({ error: 'Call record not found' }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      console.log('Record not found or access denied for user:', user.id, 'record:', call_record_id);
+      return new Response(
+        JSON.stringify({ error: 'Call record not found or access denied' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+    // ========== END OWNERSHIP VERIFICATION ==========
 
     if (!record.recording_url) {
       return new Response(JSON.stringify({ error: 'No recording URL' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    console.log('Processing transcription for record:', call_record_id);
 
     // Fetch audio
     const audioResponse = await fetch(record.recording_url, { headers: { 'Accept': 'audio/*' } });
@@ -136,6 +179,7 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     }).eq('id', call_record_id);
 
+    console.log('Transcription completed for record:', call_record_id);
     return new Response(JSON.stringify({ success: true, data: result }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {

@@ -4,7 +4,7 @@ project_id = "dxwowuztnmjewkncptji"
 verify_jwt = false
 
 [functions.transcribe-pending]
-verify_jwt = false
+verify_jwt = true
 
 [functions.transcribe-audio]
 verify_jwt = true
