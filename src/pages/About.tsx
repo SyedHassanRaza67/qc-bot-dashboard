@@ -16,7 +16,7 @@ const About = () => {
             <AudioWaveform className="h-10 w-10 text-primary" />
           </div>
           <h1 className="text-4xl font-bold text-foreground mb-4">
-            About AI Audio Analyzer
+            About Audio Analyzer AI
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             A powerful tool for transforming audio recordings into actionable insights
@@ -31,7 +31,7 @@ const About = () => {
           <Card className="rounded-2xl mb-8">
             <CardContent className="p-8">
               <p className="text-lg text-foreground leading-relaxed mb-6">
-                AI Audio Analyzer is an intelligent platform designed to help businesses 
+                Audio Analyzer AI is an intelligent platform designed to help businesses 
                 analyze their call recordings efficiently. Using advanced AI technology, 
                 we automatically transcribe audio files, extract key information, and 
                 provide actionable insights that help improve customer interactions 
@@ -42,7 +42,7 @@ const About = () => {
                 language processing to identify call outcomes, sentiment, and important 
                 details from every conversation. Whether you're tracking sales calls, 
                 customer support interactions, or general business communications, 
-                AI Audio Analyzer makes it easy to understand and act on your audio data.
+                Audio Analyzer AI makes it easy to understand and act on your audio data.
               </p>
             </CardContent>
           </Card>
