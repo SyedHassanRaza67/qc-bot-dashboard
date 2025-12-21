@@ -7,10 +7,10 @@ export const Footer = () => {
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <AudioWaveform className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">AI Audio Analyzer</span>
+            <span className="font-semibold text-foreground">Audio Analyzer AI</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            © 2025 AI Audio Analyzer — All Rights Reserved.
+            © 2025 Audio Analyzer AI — All Rights Reserved.
           </p>
         </div>
       </div>

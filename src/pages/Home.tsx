@@ -103,7 +103,7 @@ const Home = () => {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-5xl md:text-7xl font-bold text-foreground mb-6 tracking-tight">
-              AI Audio Analyzer
+              Audio Analyzer AI
             </h1>
           </motion.div>
 
@@ -332,7 +332,7 @@ const Home = () => {
               Ready to Transform Your Audio Data?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Join thousands of businesses already using AI Audio Analyzer
+              Join thousands of businesses already using Audio Analyzer AI
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild size="lg" className="text-base px-8 py-6 rounded-xl">

@@ -78,7 +78,7 @@ export const Navbar = () => {
               <AudioWaveform className="h-6 w-6 text-primary" />
             </div>
             <span className="text-xl font-bold text-foreground">
-              AI Audio Analyzer
+              Audio Analyzer AI
             </span>
           </Link>
 

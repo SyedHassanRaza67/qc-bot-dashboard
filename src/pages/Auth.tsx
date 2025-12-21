@@ -93,7 +93,7 @@ const Auth = () => {
 
         toast({
           title: "Account created!",
-          description: "Welcome to AI Audio Analyzer.",
+          description: "Welcome to Audio Analyzer AI.",
         });
         navigate("/dashboard");
       }
@@ -125,7 +125,7 @@ const Auth = () => {
           {/* Header */}
           <div className="text-center mb-8">
             <Link to="/" className="inline-block mb-6">
-              <h1 className="text-2xl font-bold text-primary">AI Audio Analyzer</h1>
+              <h1 className="text-2xl font-bold text-primary">Audio Analyzer AI</h1>
             </Link>
             <h2 className="text-2xl font-bold text-foreground mb-2">
               {isLogin ? "Welcome Back" : "Create Account"}

@@ -99,7 +99,7 @@ const ResetPassword = () => {
           {/* Header */}
           <div className="text-center mb-8">
             <Link to="/" className="inline-block mb-6">
-              <h1 className="text-2xl font-bold text-primary">AI Audio Analyzer</h1>
+              <h1 className="text-2xl font-bold text-primary">Audio Analyzer AI</h1>
             </Link>
             {success ? (
               <>
