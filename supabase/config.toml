@@ -3,6 +3,9 @@ project_id = "dxwowuztnmjewkncptji"
 [functions.vici-sync]
 verify_jwt = false
 
+[functions.transcribe-pending]
+verify_jwt = false
+
 [functions.transcribe-audio]
 verify_jwt = true
 

@@ -49,13 +49,29 @@ interface CallRecordsTableProps {
 }
 
 const getStatusBadge = (status: string, summary?: string) => {
-  // Show "Transcribing" badge if summary indicates transcription in progress
-  const isTranscribing = summary === 'Transcribing...' || summary === 'Pending AI analysis';
-  
-  if (isTranscribing) {
+  // Show "Transcribing..." badge when actively being processed
+  if (summary === 'Transcribing...') {
     return (
       <span className="status-badge bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse">
         Transcribing...
+      </span>
+    );
+  }
+  
+  // Show "Pending" badge for records awaiting transcription
+  if (summary === 'Pending AI analysis') {
+    return (
+      <span className="status-badge bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+        Pending
+      </span>
+    );
+  }
+  
+  // Show error badge for failed transcriptions
+  if (summary?.startsWith('AI error:') || summary?.startsWith('Audio fetch failed') || summary?.includes('failed')) {
+    return (
+      <span className="status-badge bg-red-500/20 text-red-400 border-red-500/30">
+        Error
       </span>
     );
   }

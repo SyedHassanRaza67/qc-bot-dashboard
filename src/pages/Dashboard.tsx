@@ -25,7 +25,12 @@ const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  // Default to today's date to reduce initial load
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return { from: today, to: today };
+  });
   const [currentPage, setCurrentPage] = useState(1);
   
   // Restore filters from localStorage
