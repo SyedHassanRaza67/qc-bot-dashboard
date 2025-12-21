@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio } from "lucide-react";
+import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -43,6 +43,8 @@ const Dashboard = () => {
   
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -70,6 +72,38 @@ const Dashboard = () => {
   const records = paginatedData?.records || [];
   const totalCount = paginatedData?.totalCount || 0;
   const totalPages = paginatedData?.totalPages || 1;
+
+  // Count pending records
+  useEffect(() => {
+    const count = records.filter(r => 
+      r.summary === 'Pending AI analysis' || r.summary === 'Transcribing...'
+    ).length;
+    setPendingCount(count);
+  }, [records]);
+
+  // Handle transcribe all pending records
+  const handleTranscribeAll = async () => {
+    setIsTranscribing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('transcribe-pending', {
+        body: { limit: 20 }
+      });
+      
+      if (error) throw error;
+      
+      toast.success('Transcription started', {
+        description: `Processing ${data?.processed || 0} records`
+      });
+      
+      // Refetch after a short delay
+      setTimeout(() => refetch(), 2000);
+    } catch (err) {
+      console.error('Transcription error:', err);
+      toast.error('Failed to start transcription');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
 
   // Real-time subscription - always on for auto-updates (transcription status changes)
   useEffect(() => {
@@ -236,6 +270,18 @@ const Dashboard = () => {
             <Button onClick={() => refetch()} variant="outline" className="rounded-xl">
               Refresh Data
             </Button>
+
+            {pendingCount > 0 && (
+              <Button 
+                onClick={handleTranscribeAll}
+                variant="default"
+                className="rounded-xl gap-2 bg-amber-500 hover:bg-amber-600"
+                disabled={isTranscribing}
+              >
+                <Zap className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
+                Transcribe ({pendingCount})
+              </Button>
+            )}
           </div>
         </div>
 
