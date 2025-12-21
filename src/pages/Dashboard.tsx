@@ -165,20 +165,25 @@ const Dashboard = () => {
   };
 
   const handleSyncFromDialer = async () => {
-    // Sync last 7 days by default, or use selected date range
+    // Always sync last 7 days to ensure we catch recent recordings
     const today = new Date();
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(today.getDate() - 7);
     
-    const fromDate = dateRange?.from 
-      ? dateRange.from.toISOString().split('T')[0] 
-      : sevenDaysAgo.toISOString().split('T')[0];
+    // Check if date range is just "today" (default) - if so, use 7 days instead
+    const isDefaultTodayOnly = dateRange?.from && dateRange?.to && 
+      dateRange.from.toDateString() === today.toDateString() &&
+      dateRange.to.toDateString() === today.toDateString();
+    
+    const fromDate = isDefaultTodayOnly 
+      ? sevenDaysAgo.toISOString().split('T')[0]
+      : (dateRange?.from?.toISOString().split('T')[0] ?? sevenDaysAgo.toISOString().split('T')[0]);
     const toDate = dateRange?.to 
       ? dateRange.to.toISOString().split('T')[0] 
       : today.toISOString().split('T')[0];
     
     toast.info('Syncing recordings...', {
-      description: 'Transcription happens automatically during sync',
+      description: `Fetching from ${fromDate} to ${toDate}`,
     });
     
     const result = await syncRecordings(fromDate, toDate);
