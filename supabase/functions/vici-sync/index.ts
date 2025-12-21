@@ -294,181 +294,39 @@ serve(async (req) => {
         .update({ last_sync_at: new Date().toISOString() })
         .eq('id', integration.id);
 
-      // Trigger automatic transcription for new records in the background
+      // Trigger automatic transcription for new records
       if (newRecordIds.length > 0) {
-        console.log(`Triggering auto-transcription for ${newRecordIds.length} new records`);
+        console.log(`Triggering transcribe-pending for ${newRecordIds.length} new records`);
         
-        // Mark records as transcribing immediately
-        for (const recordId of newRecordIds) {
-          await supabase
-            .from('call_records')
-            .update({ summary: 'Transcribing...' })
-            .eq('id', recordId);
-        }
-        
-        const transcribeRecords = async () => {
-          for (const recordId of newRecordIds) {
-            try {
-              console.log(`Auto-transcribing record: ${recordId}`);
-              
-              // Fetch the record
-              const { data: record } = await supabase
-                .from('call_records')
-                .select('*')
-                .eq('id', recordId)
-                .single();
-
-              if (!record || !record.recording_url) {
-                console.log(`Skipping record ${recordId}: no recording URL`);
-                await supabase
-                  .from('call_records')
-                  .update({ summary: 'No recording URL' })
-                  .eq('id', recordId);
-                continue;
-              }
-
-              // Fetch the audio file
-              const audioResponse = await fetch(record.recording_url, {
-                headers: { 'Accept': 'audio/*' },
-              });
-
-              if (!audioResponse.ok) {
-                console.log(`Failed to fetch audio for ${recordId}: ${audioResponse.status}`);
-                await supabase
-                  .from('call_records')
-                  .update({ summary: `Audio fetch failed: ${audioResponse.status}` })
-                  .eq('id', recordId);
-                continue;
-              }
-
-              const audioBuffer = await audioResponse.arrayBuffer();
-              
-              // Convert to base64 in chunks (avoid stack overflow)
-              let binaryString = '';
-              const chunkSize = 8192;
-              const audioBytes = new Uint8Array(audioBuffer);
-              for (let i = 0; i < audioBytes.length; i += chunkSize) {
-                const chunk = audioBytes.subarray(i, Math.min(i + chunkSize, audioBytes.length));
-                binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-              }
-              const audioBase64 = btoa(binaryString);
-              
-              console.log(`Audio fetched for ${recordId}, size: ${audioBuffer.byteLength} bytes`);
-
-              // Call Lovable AI for transcription
-              const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-              if (!LOVABLE_API_KEY) {
-                console.error('LOVABLE_API_KEY not configured');
-                await supabase
-                  .from('call_records')
-                  .update({ summary: 'AI API key not configured' })
-                  .eq('id', recordId);
-                continue;
-              }
-
-              const systemPrompt = `You are an expert call center quality analyst. Analyze this call recording and provide:
-1. Complete transcript formatted as: Agent: [text]\nCustomer: [text]
-2. AI disposition (status): sale, callback, not-interested, disqualified, or pending
-3. Sub-disposition with detail
-4. Brief summary (2-3 sentences)
-5. Main reason for outcome
-6. Agent sentiment: excellent, good, average, bad, or very-bad
-7. Customer sentiment: excellent, good, average, bad, or very-bad
-
-Respond in JSON format only:
-{"transcript":"...","status":"...","sub_disposition":"...","summary":"...","reason":"...","agent_response":"...","customer_response":"..."}`;
-
-              const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  model: 'google/gemini-2.5-flash',
-                  messages: [
-                    { role: 'system', content: systemPrompt },
-                    { 
-                      role: 'user', 
-                      content: [
-                        { type: 'text', text: 'Transcribe and analyze this call recording. Respond with JSON only.' },
-                        { type: 'image_url', image_url: { url: `data:audio/mpeg;base64,${audioBase64}` } }
-                      ]
-                    }
-                  ],
-                }),
-              });
-
-              if (!aiResponse.ok) {
-                console.log(`AI error for ${recordId}: ${aiResponse.status}`);
-                await supabase
-                  .from('call_records')
-                  .update({ summary: `AI error: ${aiResponse.status}` })
-                  .eq('id', recordId);
-                // Add delay if rate limited
-                if (aiResponse.status === 429) {
-                  console.log('Rate limited, waiting 10 seconds...');
-                  await new Promise(resolve => setTimeout(resolve, 10000));
-                }
-                continue;
-              }
-
-              const aiData = await aiResponse.json();
-              const content = aiData.choices?.[0]?.message?.content || '';
-              const jsonMatch = content.match(/\{[\s\S]*\}/);
-              
-              if (jsonMatch) {
-                const result = JSON.parse(jsonMatch[0]);
-                
-                await supabase
-                  .from('call_records')
-                  .update({
-                    transcript: result.transcript,
-                    status: result.status,
-                    sub_disposition: result.sub_disposition,
-                    summary: result.summary,
-                    reason: result.reason,
-                    agent_response: result.agent_response,
-                    customer_response: result.customer_response,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', recordId);
-                  
-                console.log(`Transcription completed for ${recordId}`);
-              } else {
-                console.log(`No JSON found in AI response for ${recordId}`);
-                await supabase
-                  .from('call_records')
-                  .update({ summary: 'AI response parsing failed' })
-                  .eq('id', recordId);
-              }
-
-              // Small delay between records to avoid rate limits
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              
-            } catch (err) {
-              console.error(`Transcription error for ${recordId}:`, err);
-              await supabase
-                .from('call_records')
-                .update({ summary: `Error: ${err instanceof Error ? err.message : 'Unknown'}` })
-                .eq('id', recordId);
-            }
+        // Call the dedicated transcription function
+        try {
+          const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-pending`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({ recordIds: newRecordIds }),
+          });
+          
+          if (transcribeResponse.ok) {
+            const transcribeResult = await transcribeResponse.json();
+            console.log('Transcription triggered:', transcribeResult);
+          } else {
+            console.error('Failed to trigger transcription:', transcribeResponse.status);
           }
-          console.log('Background transcription batch completed');
-        };
-
-        // Run transcription in background
-        (globalThis as any).EdgeRuntime?.waitUntil?.(transcribeRecords()) || transcribeRecords();
+        } catch (transcribeError) {
+          console.error('Error triggering transcription:', transcribeError);
+        }
       }
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Synced ${insertedCount} new records from ${datesToSync.length} days. Transcription started in background.`,
+          message: `Synced ${insertedCount} new recordings out of ${allRecords.length} found`,
           total: allRecords.length,
           inserted: insertedCount,
-          transcribing: newRecordIds.length,
-          dateRange: { from: startDate, to: endDate },
+          transcription_triggered: newRecordIds.length > 0,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -476,15 +334,14 @@ Respond in JSON format only:
 
     return new Response(
       JSON.stringify({ success: false, error: 'Invalid action' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     );
 
   } catch (error) {
-    console.error('Edge function error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Vici-sync error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
