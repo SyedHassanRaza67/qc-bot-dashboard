@@ -100,6 +100,19 @@ export const Navbar = () => {
                 </Link>
               );
             })}
+            {user && (
+              <Link
+                to="/settings"
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                  location.pathname === "/settings"
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                }`}
+              >
+                <Settings className="h-4 w-4" />
+                Settings
+              </Link>
+            )}
             {isAdmin && (
               <Link
                 to="/admin"
@@ -173,6 +186,20 @@ export const Navbar = () => {
                     </Link>
                   );
                 })}
+                {user && (
+                  <Link
+                    to="/settings"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                      location.pathname === "/settings"
+                        ? "bg-primary/20 text-primary"
+                        : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                    }`}
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link
                     to="/admin"

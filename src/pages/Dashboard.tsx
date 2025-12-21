@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio, Zap, Settings, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -227,7 +228,14 @@ const Dashboard = () => {
             <h1 className="text-3xl font-bold text-foreground mb-2">Dashboard</h1>
             <p className="text-muted-foreground">Track, manage, and analyze your call recordings</p>
           </div>
-          <SyncIndicator isSyncing={isSyncing} />
+          <div className="flex items-center gap-3">
+            <SyncIndicator isSyncing={isSyncing} />
+            <Link to="/settings">
+              <Button variant="outline" size="icon" className="rounded-xl">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Search & Controls */}
@@ -280,6 +288,22 @@ const Dashboard = () => {
 
             <Button onClick={() => refetch()} variant="outline" className="rounded-xl">
               Refresh Data
+            </Button>
+
+            <Button 
+              onClick={() => {
+                setSearchQuery("");
+                setSourceFilter("all");
+                setStatusFilter("all");
+                localStorage.removeItem('dashboard-source-filter');
+                localStorage.removeItem('dashboard-status-filter');
+                toast.success('Filters reset');
+              }} 
+              variant="outline" 
+              className="rounded-xl gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset
             </Button>
 
             {pendingCount > 0 && (

@@ -19,6 +19,7 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Integrations = lazy(() => import("./pages/Integrations"));
+const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const PageLoader = () => (
@@ -75,6 +76,11 @@ const App = () => (
                 <Route path="/record/:id" element={
                   <ProtectedRoute>
                     <CallDetail />
+                  </ProtectedRoute>
+                } />
+                <Route path="/settings" element={
+                  <ProtectedRoute>
+                    <Settings />
                   </ProtectedRoute>
                 } />
                 <Route path="*" element={<NotFound />} />
