@@ -6,6 +6,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Valid enum values for validation
+const VALID_STATUSES = ['sale', 'callback', 'not-interested', 'disqualified', 'pending'] as const;
+const VALID_RESPONSES = ['excellent', 'good', 'average', 'bad', 'very-bad'] as const;
+
+type ValidStatus = typeof VALID_STATUSES[number];
+type ValidResponse = typeof VALID_RESPONSES[number];
+
+// Validation helper functions
+function validateStatus(value: unknown): ValidStatus {
+  if (typeof value === 'string' && VALID_STATUSES.includes(value as ValidStatus)) {
+    return value as ValidStatus;
+  }
+  return 'pending';
+}
+
+function validateResponse(value: unknown): ValidResponse | null {
+  if (typeof value === 'string' && VALID_RESPONSES.includes(value as ValidResponse)) {
+    return value as ValidResponse;
+  }
+  return null;
+}
+
+function validateString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -67,9 +93,36 @@ serve(async (req) => {
     const content = data.choices?.[0]?.message?.content || '';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     
-    let result = { transcript: content, status: 'pending', sub_disposition: 'Analyzed', summary: 'Transcribed', reason: 'See transcript', agent_response: null, customer_response: null };
+    // Default safe values
+    let result = {
+      transcript: content,
+      status: 'pending' as ValidStatus,
+      sub_disposition: 'Analyzed',
+      summary: 'Transcribed',
+      reason: 'See transcript',
+      agent_response: null as ValidResponse | null,
+      customer_response: null as ValidResponse | null,
+    };
+
     if (jsonMatch) {
-      try { result = { ...result, ...JSON.parse(jsonMatch[0]) }; } catch (e) {}
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Validate and sanitize each field
+        result = {
+          transcript: validateString(parsed.transcript, content),
+          status: validateStatus(parsed.status),
+          sub_disposition: validateString(parsed.sub_disposition, 'Analyzed'),
+          summary: validateString(parsed.summary, 'Transcribed'),
+          reason: validateString(parsed.reason, 'See transcript'),
+          agent_response: validateResponse(parsed.agent_response),
+          customer_response: validateResponse(parsed.customer_response),
+        };
+        
+        console.log('AI response validated successfully');
+      } catch (e) {
+        console.log('Parse error, using defaults:', e);
+      }
     }
 
     await supabase.from('call_records').update({

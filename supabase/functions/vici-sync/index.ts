@@ -6,6 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Valid enum values for validation (used when inserting synced records)
+const VALID_STATUSES = ['sale', 'callback', 'not-interested', 'disqualified', 'pending'] as const;
+type ValidStatus = typeof VALID_STATUSES[number];
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -160,13 +164,15 @@ serve(async (req) => {
 
       console.log('New records:', newRecords.length);
 
-      // Insert with pending status (transcription will happen separately)
+      // Insert with validated pending status (transcription will happen separately)
       let insertedCount = 0;
+      const validatedStatus: ValidStatus = 'pending'; // Explicitly use valid enum value
+      
       for (const record of newRecords) {
         const { error } = await supabase.from('call_records').insert({
           ...record,
           transcript: 'Pending transcription',
-          status: 'pending',
+          status: validatedStatus, // Use validated status
           sub_disposition: 'Imported',
           summary: 'Pending AI analysis',
           reason: 'Auto-imported from VICIdial',
