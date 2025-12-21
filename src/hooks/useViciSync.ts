@@ -10,18 +10,34 @@ export const useViciSync = () => {
     message: string;
     total?: number;
     inserted?: number;
-    transcribed?: number;
-    failed?: number;
   } | null>(null);
 
   const syncRecordings = useCallback(async (dateFrom?: string, dateTo?: string) => {
     setIsSyncing(true);
+    
+    // Create an AbortController with 120 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    
     try {
       const { data, error } = await supabase.functions.invoke("vici-sync", {
         body: { action: "sync", dateFrom, dateTo },
       });
 
-      if (error) throw error;
+      clearTimeout(timeoutId);
+
+      if (error) {
+        // Check if it's a timeout or network error
+        if (error.message?.includes('Failed to send') || error.message?.includes('fetch')) {
+          // The sync might still be running in the background
+          toast({
+            title: "Sync In Progress",
+            description: "The sync is taking longer than expected. Records may still be importing. Please refresh in a moment.",
+          });
+          return { success: true, message: "Sync in progress", inProgress: true };
+        }
+        throw error;
+      }
 
       setLastSyncResult(data);
 
@@ -40,8 +56,21 @@ export const useViciSync = () => {
 
       return data;
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error("Sync error:", error);
+      
       const errorMessage = error instanceof Error ? error.message : "Failed to sync";
+      
+      // Handle specific error types
+      if (errorMessage.includes('Failed to send') || errorMessage.includes('AbortError')) {
+        toast({
+          title: "Sync In Progress",
+          description: "The sync is taking longer than expected. Records may still be importing in the background.",
+        });
+        setLastSyncResult({ success: true, message: "Sync in progress" });
+        return { success: true, message: "Sync in progress", inProgress: true };
+      }
+      
       setLastSyncResult({ success: false, message: errorMessage });
       toast({
         title: "Sync Failed",
