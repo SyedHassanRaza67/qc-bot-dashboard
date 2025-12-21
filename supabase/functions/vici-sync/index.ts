@@ -209,6 +209,20 @@ serve(async (req) => {
 
       console.log(`Sync complete: ${insertedCount} inserted out of ${allRecords.length} total`);
 
+      // Auto-trigger background transcription if we inserted new records
+      if (insertedCount > 0) {
+        console.log('Triggering background transcription for new records...');
+        // Fire and forget - don't wait for transcription to complete
+        fetch(`${supabaseUrl}/functions/v1/transcribe-background`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({ user_id: user.id, limit: insertedCount, concurrency: 5 }),
+        }).catch(err => console.error('Background transcription trigger failed:', err));
+      }
+
       return new Response(
         JSON.stringify({ success: true, message: `Synced ${insertedCount} new recordings`, total: allRecords.length, inserted: insertedCount }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
