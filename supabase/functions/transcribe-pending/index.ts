@@ -40,6 +40,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -49,19 +50,49 @@ serve(async (req) => {
       );
     }
 
+    // ========== AUTHENTICATION CHECK ==========
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.log('Missing authorization header');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create user client to verify authentication
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      console.log('Authentication failed:', userError?.message);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log('Authenticated user:', user.id);
+    // ========== END AUTHENTICATION CHECK ==========
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const body = await req.json().catch(() => ({}));
     const limit = body.limit || 10;
 
-    console.log('Transcribe-pending called, limit:', limit);
+    console.log('Transcribe-pending called, limit:', limit, 'user:', user.id);
 
-    // Find pending records
+    // ========== FILTER BY AUTHENTICATED USER ==========
+    // Only find pending records belonging to the authenticated user
     const { data: pendingRecords, error: fetchError } = await supabase
       .from('call_records')
       .select('id, recording_url, system_call_id')
+      .eq('user_id', user.id)  // Only process user's own records
       .or('summary.eq.Pending AI analysis,summary.ilike.Transcription failed%')
       .order('created_at', { ascending: true })
       .limit(limit);
+    // ========== END FILTER BY AUTHENTICATED USER ==========
 
     if (fetchError) {
       console.error('Fetch error:', fetchError);
@@ -78,7 +109,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Processing ${pendingRecords.length} records`);
+    console.log(`Processing ${pendingRecords.length} records for user ${user.id}`);
     let successCount = 0;
     let failCount = 0;
 
