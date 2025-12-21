@@ -188,13 +188,28 @@ const Dashboard = () => {
     
     const result = await syncRecordings(fromDate, toDate);
     
-    if (result?.transcribed !== undefined) {
-      toast.success('Sync complete with transcription', {
-        description: `${result.inserted} synced, ${result.transcribed} transcribed`,
-      });
+    if (result?.success) {
+      // Expand date range to show synced data if we were on default today-only
+      if (isDefaultTodayOnly) {
+        setDateRange({ from: sevenDaysAgo, to: today });
+      }
+      
+      if (result?.inserted > 0) {
+        toast.success('Sync complete', {
+          description: `${result.inserted} new recordings synced`,
+        });
+      }
     }
     
-    refetch();
+    // If sync is in progress (timeout happened), refetch after delay
+    if (result?.inProgress) {
+      if (isDefaultTodayOnly) {
+        setDateRange({ from: sevenDaysAgo, to: today });
+      }
+      setTimeout(() => refetch(), 5000);
+    } else {
+      refetch();
+    }
   };
 
   const handleViewRecord = (recordId: string) => {

@@ -6,7 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Valid enum values for validation (used when inserting synced records)
 const VALID_STATUSES = ['sale', 'callback', 'not-interested', 'disqualified', 'pending'] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
 
@@ -18,9 +17,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -102,36 +98,25 @@ serve(async (req) => {
       const isDateTime = (v: string) => /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}$/.test(v);
       const toIso = (s: string, d: string) => isDateTime(s) ? new Date(s.replace(' ', 'T') + 'Z').toISOString() : new Date(d + 'T00:00:00Z').toISOString();
 
-      // Fetch recordings
       console.log(`Starting sync for dates: ${startDate} to ${endDate}, agents: ${agentUsers.join(', ')}`);
       
+      // Fetch all recordings from VICIdial
       for (const queryDate of datesToSync) {
         for (const agentId of agentUsers) {
           try {
             const url = `${baseUrl}/vicidial/non_agent_api.php?source=AI-Analyzer&function=recording_lookup&stage=pipe&user=${encodeURIComponent(api_user)}&pass=${encodeURIComponent(api_pass_encrypted)}&agent_user=${encodeURIComponent(agentId)}&date=${encodeURIComponent(queryDate)}&duration=Y`;
-            console.log(`Fetching: agent=${agentId}, date=${queryDate}`);
             
             const response = await fetch(url, { method: 'GET', headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' } });
-            if (!response.ok) {
-              console.log(`HTTP error: ${response.status}`);
-              continue;
-            }
+            if (!response.ok) continue;
 
             const text = await response.text();
-            console.log(`Response for ${agentId}/${queryDate}: ${text.substring(0, 300)}`);
-            
             const lines = text.trim().split('\n');
 
             for (const line of lines) {
               const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith('ERROR') || trimmed.startsWith('NOTICE') || trimmed === 'NO RECORDINGS FOUND') {
-                console.log(`Skipping line: ${trimmed.substring(0, 100)}`);
-                continue;
-              }
+              if (!trimmed || trimmed.startsWith('ERROR') || trimmed.startsWith('NOTICE') || trimmed === 'NO RECORDINGS FOUND') continue;
 
               const parts = trimmed.split('|').map(p => p.trim());
-              console.log(`Parsing line with ${parts.length} parts: ${parts.slice(0, 5).join('|')}`);
-              
               let startDateStr = '', recordingId = '', leadId = '', lengthInSec = '0', location = '', agentFromLine = agentId;
 
               if (parts.length === 6 && isDateTime(parts[0])) {
@@ -139,15 +124,9 @@ serve(async (req) => {
               } else if (parts.length >= 6) {
                 recordingId = parts[0]; leadId = parts[1]; startDateStr = parts[5];
                 lengthInSec = parts[7] || '0'; location = parts[9] || ''; agentFromLine = parts[10] || agentId;
-              } else {
-                console.log(`Skipping line: insufficient parts (${parts.length})`);
-                continue;
-              }
+              } else continue;
 
-              if (!recordingId || isNaN(Number(recordingId))) {
-                console.log(`Skipping: invalid recordingId=${recordingId}`);
-                continue;
-              }
+              if (!recordingId || isNaN(Number(recordingId))) continue;
 
               const durationSecs = parseInt(lengthInSec, 10) || 0;
               const mins = Math.floor(durationSecs / 60);
@@ -175,36 +154,63 @@ serve(async (req) => {
 
       console.log('Total parsed:', allRecords.length);
 
-      // Filter duplicates
-      const newRecords: any[] = [];
-      for (const record of allRecords) {
-        const { data: existing } = await supabase.from('call_records').select('id').eq('system_call_id', record.system_call_id).eq('user_id', user.id).maybeSingle();
-        if (!existing) newRecords.push(record);
+      if (allRecords.length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, message: 'No recordings found for the selected date range', total: 0, inserted: 0 }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      console.log('New records:', newRecords.length);
+      // BATCH duplicate check - get all existing system_call_ids in one query
+      const systemCallIds = allRecords.map(r => r.system_call_id);
+      const { data: existingRecords } = await supabase
+        .from('call_records')
+        .select('system_call_id')
+        .eq('user_id', user.id)
+        .in('system_call_id', systemCallIds);
 
-      // Insert with validated pending status (transcription will happen separately)
+      const existingIds = new Set(existingRecords?.map(r => r.system_call_id) || []);
+      const newRecords = allRecords.filter(r => !existingIds.has(r.system_call_id));
+
+      console.log('New records after batch filter:', newRecords.length);
+
+      if (newRecords.length === 0) {
+        return new Response(
+          JSON.stringify({ success: true, message: 'All recordings already synced', total: allRecords.length, inserted: 0 }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // BATCH insert - insert all records at once in chunks of 100
+      const BATCH_SIZE = 100;
       let insertedCount = 0;
-      const validatedStatus: ValidStatus = 'pending'; // Explicitly use valid enum value
-      
-      for (const record of newRecords) {
-        const { error } = await supabase.from('call_records').insert({
+      const validatedStatus: ValidStatus = 'pending';
+
+      for (let i = 0; i < newRecords.length; i += BATCH_SIZE) {
+        const batch = newRecords.slice(i, i + BATCH_SIZE).map(record => ({
           ...record,
           transcript: 'Pending transcription',
-          status: validatedStatus, // Use validated status
+          status: validatedStatus,
           sub_disposition: 'Imported',
           summary: 'Pending AI analysis',
           reason: 'Auto-imported from VICIdial',
-        });
-        if (!error) insertedCount++;
+        }));
+
+        const { error, data } = await supabase.from('call_records').insert(batch).select('id');
+        if (!error && data) {
+          insertedCount += data.length;
+        } else if (error) {
+          console.log('Batch insert error:', error.message);
+        }
       }
 
       // Update last sync
       await supabase.from('dialer_integrations').update({ last_sync_at: new Date().toISOString() }).eq('id', integration.id);
 
+      console.log(`Sync complete: ${insertedCount} inserted out of ${allRecords.length} total`);
+
       return new Response(
-        JSON.stringify({ success: true, message: `Synced ${insertedCount} recordings`, total: allRecords.length, inserted: insertedCount }),
+        JSON.stringify({ success: true, message: `Synced ${insertedCount} new recordings`, total: allRecords.length, inserted: insertedCount }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
