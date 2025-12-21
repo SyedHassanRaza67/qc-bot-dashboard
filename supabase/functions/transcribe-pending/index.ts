@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -7,10 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Transcribe audio using OpenAI Whisper API (FAST!)
-async function transcribeWithWhisper(audioUrl: string, openaiKey: string): Promise<string> {
-  console.log('Fetching audio from:', audioUrl);
+// Transcribe audio using Lovable AI (Google Gemini with audio support)
+async function transcribeWithLovableAI(audioUrl: string, lovableKey: string): Promise<{ transcript: string; analysis: any }> {
+  console.log('Fetching audio for transcription:', audioUrl);
   
+  // Fetch audio file and convert to base64
   const audioResponse = await fetch(audioUrl, {
     headers: { 'Accept': 'audio/*' },
   });
@@ -19,45 +19,13 @@ async function transcribeWithWhisper(audioUrl: string, openaiKey: string): Promi
     throw new Error(`Audio fetch failed: ${audioResponse.status}`);
   }
   
-  const audioBlob = await audioResponse.blob();
-  console.log('Audio fetched, size:', audioBlob.size, 'bytes');
+  const audioBuffer = await audioResponse.arrayBuffer();
+  const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+  const mimeType = audioResponse.headers.get('content-type') || 'audio/mpeg';
   
-  // Create form data for Whisper API
-  const formData = new FormData();
-  formData.append('file', audioBlob, 'audio.mp3');
-  formData.append('model', 'whisper-1');
-  formData.append('language', 'en');
-  formData.append('response_format', 'text');
+  console.log('Audio fetched, size:', audioBuffer.byteLength, 'bytes, type:', mimeType);
   
-  console.log('Calling Whisper API...');
-  const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${openaiKey}` },
-    body: formData,
-  });
-  
-  if (!whisperResponse.ok) {
-    const errorText = await whisperResponse.text();
-    throw new Error(`Whisper API error: ${whisperResponse.status} - ${errorText}`);
-  }
-  
-  const transcript = await whisperResponse.text();
-  console.log('Whisper transcription complete, length:', transcript.length);
-  return transcript;
-}
-
-// Quick AI analysis of transcript using Lovable AI
-async function analyzeTranscript(transcript: string, lovableKey: string): Promise<any> {
-  const systemPrompt = `You are a call center analyst. Analyze this call transcript and provide:
-- status: sale, callback, not-interested, disqualified, or pending
-- sub_disposition: brief detail
-- summary: 1-2 sentence summary
-- reason: main reason for outcome
-- agent_response: excellent, good, average, bad, or very-bad
-- customer_response: excellent, good, average, bad, or very-bad
-
-Respond in JSON only: {"status":"...","sub_disposition":"...","summary":"...","reason":"...","agent_response":"...","customer_response":"..."}`;
-
+  // Use Gemini with inline audio data for transcription + analysis in one call
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -65,34 +33,101 @@ Respond in JSON only: {"status":"...","sub_disposition":"...","summary":"...","r
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash-lite', // Fast model for analysis
+      model: 'google/gemini-2.5-flash',
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Analyze this call transcript:\n\n${transcript}` }
+        {
+          role: 'system',
+          content: `You are a call transcription and analysis expert. Listen to this audio and:
+1. Transcribe the entire conversation word-for-word
+2. Analyze the call and provide:
+   - status: sale, callback, not-interested, disqualified, or pending
+   - sub_disposition: brief detail about outcome
+   - summary: 1-2 sentence summary
+   - reason: main reason for outcome
+   - agent_response: excellent, good, average, bad, or very-bad
+   - customer_response: excellent, good, average, bad, or very-bad
+
+Respond in this EXACT JSON format:
+{
+  "transcript": "Full word-for-word transcription here...",
+  "status": "sale|callback|not-interested|disqualified|pending",
+  "sub_disposition": "Brief detail",
+  "summary": "1-2 sentence summary",
+  "reason": "Main reason",
+  "agent_response": "excellent|good|average|bad|very-bad",
+  "customer_response": "excellent|good|average|bad|very-bad"
+}`
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Please transcribe and analyze this call recording:'
+            },
+            {
+              type: 'input_audio',
+              input_audio: {
+                data: base64Audio,
+                format: mimeType.includes('wav') ? 'wav' : 'mp3'
+              }
+            }
+          ]
+        }
       ],
     }),
   });
 
   if (!response.ok) {
-    console.error('Analysis API error:', response.status);
-    return null;
+    const errorText = await response.text();
+    console.error('Lovable AI error:', response.status, errorText);
+    throw new Error(`AI transcription failed: ${response.status}`);
   }
 
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
-  const jsonMatch = content.match(/\{[\s\S]*\}/);
   
+  console.log('AI response received, length:', content.length);
+  
+  // Parse JSON from response
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
-    return JSON.parse(jsonMatch[0]);
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        transcript: parsed.transcript || 'No transcript available',
+        analysis: {
+          status: parsed.status || 'pending',
+          sub_disposition: parsed.sub_disposition || 'Analyzed',
+          summary: parsed.summary || 'Call analyzed',
+          reason: parsed.reason || 'See transcript',
+          agent_response: parsed.agent_response || null,
+          customer_response: parsed.customer_response || null,
+        }
+      };
+    } catch (e) {
+      console.log('JSON parse failed, using raw content as transcript');
+    }
   }
-  return null;
+  
+  // Fallback: use content as transcript
+  return {
+    transcript: content || 'Transcription failed',
+    analysis: {
+      status: 'pending',
+      sub_disposition: 'Transcribed',
+      summary: 'Transcription complete',
+      reason: 'See transcript',
+      agent_response: null,
+      customer_response: null,
+    }
+  };
 }
 
 // Process a single record
 async function processRecord(
   record: any, 
   supabase: any, 
-  openaiKey: string, 
   lovableKey: string
 ): Promise<{ success: boolean; id: string; error?: string }> {
   try {
@@ -112,10 +147,10 @@ async function processRecord(
       return { success: false, id: record.id, error: 'No recording URL' };
     }
 
-    // Step 1: Transcribe with Whisper (FAST - 2-5 seconds)
-    const transcript = await transcribeWithWhisper(record.recording_url, openaiKey);
+    // Transcribe with Lovable AI
+    const result = await transcribeWithLovableAI(record.recording_url, lovableKey);
     
-    if (!transcript || transcript.trim().length === 0) {
+    if (!result.transcript || result.transcript.trim().length === 0) {
       await supabase
         .from('call_records')
         .update({ 
@@ -126,20 +161,17 @@ async function processRecord(
       return { success: false, id: record.id, error: 'Empty transcription' };
     }
 
-    // Step 2: Analyze transcript with AI (optional, can be quick)
-    const analysis = await analyzeTranscript(transcript, lovableKey);
-    
     // Update record with results
     await supabase
       .from('call_records')
       .update({
-        transcript: transcript,
-        status: analysis?.status || 'pending',
-        sub_disposition: analysis?.sub_disposition || 'Transcribed',
-        summary: analysis?.summary || 'Transcription complete',
-        reason: analysis?.reason || 'See transcript',
-        agent_response: analysis?.agent_response || null,
-        customer_response: analysis?.customer_response || null,
+        transcript: result.transcript,
+        status: result.analysis.status,
+        sub_disposition: result.analysis.sub_disposition,
+        summary: result.analysis.summary,
+        reason: result.analysis.reason,
+        agent_response: result.analysis.agent_response,
+        customer_response: result.analysis.customer_response,
         updated_at: new Date().toISOString(),
       })
       .eq('id', record.id);
@@ -168,13 +200,12 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-    if (!OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY not configured');
+    if (!LOVABLE_API_KEY) {
+      console.error('LOVABLE_API_KEY not configured');
       return new Response(
-        JSON.stringify({ success: false, error: 'OpenAI API key not configured' }),
+        JSON.stringify({ success: false, error: 'Lovable API key not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -182,7 +213,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json().catch(() => ({}));
-    const { recordIds, limit = 10 } = body; // Increased limit for parallel processing
+    const { recordIds, limit = 10 } = body;
 
     console.log('Transcribe-pending called with:', { recordIds, limit });
 
@@ -190,7 +221,7 @@ serve(async (req) => {
     let query = supabase
       .from('call_records')
       .select('*')
-      .or('summary.eq.Pending AI analysis,summary.eq.Transcribing...')
+      .or('summary.eq.Pending AI analysis,summary.eq.Transcribing...,summary.ilike.Transcription failed%')
       .order('created_at', { ascending: true })
       .limit(limit);
 
@@ -200,7 +231,7 @@ serve(async (req) => {
         .from('call_records')
         .select('*')
         .in('id', recordIds)
-        .or('summary.eq.Pending AI analysis,summary.eq.Transcribing...');
+        .or('summary.eq.Pending AI analysis,summary.eq.Transcribing...,summary.ilike.Transcription failed%');
     }
 
     const { data: pendingRecords, error: fetchError } = await query;
@@ -223,8 +254,8 @@ serve(async (req) => {
 
     console.log(`Found ${pendingRecords.length} pending records - processing in parallel`);
 
-    // Process records in parallel (5 at a time for speed)
-    const BATCH_SIZE = 5;
+    // Process records in parallel (3 at a time to avoid rate limits)
+    const BATCH_SIZE = 3;
     let successCount = 0;
     let failCount = 0;
     const results: any[] = [];
@@ -235,7 +266,7 @@ serve(async (req) => {
       
       const batchResults = await Promise.allSettled(
         batch.map(record => 
-          processRecord(record, supabase, OPENAI_API_KEY, LOVABLE_API_KEY || '')
+          processRecord(record, supabase, LOVABLE_API_KEY)
         )
       );
 

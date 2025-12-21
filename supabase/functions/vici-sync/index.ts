@@ -6,6 +6,124 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Transcribe audio using Lovable AI (Google Gemini with audio support)
+async function transcribeWithLovableAI(audioUrl: string, lovableKey: string): Promise<{ transcript: string; analysis: any }> {
+  console.log('Fetching audio for transcription:', audioUrl);
+  
+  // Fetch audio file and convert to base64
+  const audioResponse = await fetch(audioUrl, {
+    headers: { 'Accept': 'audio/*' },
+  });
+  
+  if (!audioResponse.ok) {
+    throw new Error(`Audio fetch failed: ${audioResponse.status}`);
+  }
+  
+  const audioBuffer = await audioResponse.arrayBuffer();
+  const base64Audio = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+  const mimeType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+  
+  console.log('Audio fetched, size:', audioBuffer.byteLength, 'bytes, type:', mimeType);
+  
+  // Use Gemini with inline audio data for transcription + analysis in one call
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${lovableKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.5-flash',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a call transcription and analysis expert. Listen to this audio and:
+1. Transcribe the entire conversation word-for-word
+2. Analyze the call and provide:
+   - status: sale, callback, not-interested, disqualified, or pending
+   - sub_disposition: brief detail about outcome
+   - summary: 1-2 sentence summary
+   - reason: main reason for outcome
+   - agent_response: excellent, good, average, bad, or very-bad
+   - customer_response: excellent, good, average, bad, or very-bad
+
+Respond in this EXACT JSON format:
+{
+  "transcript": "Full word-for-word transcription here...",
+  "status": "sale|callback|not-interested|disqualified|pending",
+  "sub_disposition": "Brief detail",
+  "summary": "1-2 sentence summary",
+  "reason": "Main reason",
+  "agent_response": "excellent|good|average|bad|very-bad",
+  "customer_response": "excellent|good|average|bad|very-bad"
+}`
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Please transcribe and analyze this call recording:'
+            },
+            {
+              type: 'input_audio',
+              input_audio: {
+                data: base64Audio,
+                format: mimeType.includes('wav') ? 'wav' : 'mp3'
+              }
+            }
+          ]
+        }
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Lovable AI error:', response.status, errorText);
+    throw new Error(`AI transcription failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || '';
+  
+  console.log('AI response received, length:', content.length);
+  
+  // Parse JSON from response
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        transcript: parsed.transcript || 'No transcript available',
+        analysis: {
+          status: parsed.status || 'pending',
+          sub_disposition: parsed.sub_disposition || 'Analyzed',
+          summary: parsed.summary || 'Call analyzed',
+          reason: parsed.reason || 'See transcript',
+          agent_response: parsed.agent_response || null,
+          customer_response: parsed.customer_response || null,
+        }
+      };
+    } catch (e) {
+      console.log('JSON parse failed, using raw content as transcript');
+    }
+  }
+  
+  // Fallback: use content as transcript
+  return {
+    transcript: content || 'Transcription failed',
+    analysis: {
+      status: 'pending',
+      sub_disposition: 'Transcribed',
+      summary: 'Transcription complete',
+      reason: 'See transcript',
+      agent_response: null,
+      customer_response: null,
+    }
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -15,6 +133,11 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY not configured');
+    }
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -100,9 +223,9 @@ serve(async (req) => {
       }
     }
 
-    // Sync recordings action
+    // Sync recordings action - NOW WITH INLINE TRANSCRIPTION
     if (action === 'sync') {
-      console.log('Syncing recordings from VICIdial');
+      console.log('Syncing recordings from VICIdial WITH INLINE TRANSCRIPTION');
 
       // Validate agent_user is required for recording_lookup
       if (!agent_user) {
@@ -184,9 +307,6 @@ serve(async (req) => {
 
               const parts = line.split('|').map((p) => p.trim());
 
-              // Observed formats:
-              // A) start_date|agent_user|lead_id|recording_id|length_in_sec|location
-              // B) recording_id|lead_id|closecallid|list_id|start_epoch|start_date|end_epoch|length_in_sec|filename|location|user
               let startDateStr = '';
               let recordingId = '';
               let leadId = '';
@@ -238,11 +358,6 @@ serve(async (req) => {
                 buyer_id: leadId || 'unknown',
                 publisher: 'VICIdial',
                 campaign_name: 'VICIdial Import',
-                status: 'pending',
-                sub_disposition: 'Imported',
-                reason: 'Auto-imported from VICIdial',
-                summary: 'Pending AI analysis',
-                transcript: 'Pending transcription',
                 agent_name: agentFromLine,
                 upload_source: 'vicidial',
               });
@@ -256,12 +371,9 @@ serve(async (req) => {
 
       console.log('Total records parsed:', allRecords.length);
 
-      // Insert new records (check for duplicates)
-      let insertedCount = 0;
-      const newRecordIds: string[] = [];
-      
+      // Filter out duplicates first
+      const newRecords: any[] = [];
       for (const record of allRecords) {
-        // Check if record already exists
         const { data: existing } = await supabase
           .from('call_records')
           .select('id')
@@ -269,20 +381,71 @@ serve(async (req) => {
           .eq('user_id', user.id)
           .maybeSingle();
 
-        if (existing) {
+        if (!existing) {
+          newRecords.push(record);
+        } else {
           console.log('Skipping duplicate:', record.system_call_id);
-          continue;
+        }
+      }
+
+      console.log('New records to process:', newRecords.length);
+
+      // Process each new record WITH INLINE TRANSCRIPTION
+      let insertedCount = 0;
+      let transcribedCount = 0;
+      let failedCount = 0;
+
+      for (let i = 0; i < newRecords.length; i++) {
+        const record = newRecords[i];
+        console.log(`Processing ${i + 1}/${newRecords.length}: ${record.system_call_id}`);
+
+        let transcript = 'Pending transcription';
+        let status = 'pending';
+        let sub_disposition = 'Imported';
+        let summary = 'Pending AI analysis';
+        let reason = 'Auto-imported from VICIdial';
+        let agent_response = null;
+        let customer_response = null;
+
+        // Transcribe BEFORE inserting if we have a recording URL
+        if (record.recording_url) {
+          try {
+            console.log(`Transcribing: ${record.recording_url}`);
+            const result = await transcribeWithLovableAI(record.recording_url, LOVABLE_API_KEY);
+            
+            transcript = result.transcript;
+            status = result.analysis.status;
+            sub_disposition = result.analysis.sub_disposition;
+            summary = result.analysis.summary;
+            reason = result.analysis.reason;
+            agent_response = result.analysis.agent_response;
+            customer_response = result.analysis.customer_response;
+            
+            transcribedCount++;
+            console.log(`Transcription complete for ${record.system_call_id}`);
+          } catch (transcribeError) {
+            console.error(`Transcription failed for ${record.system_call_id}:`, transcribeError);
+            summary = 'Transcription failed - will retry';
+            failedCount++;
+          }
         }
 
-        const { data: insertedRecord, error: insertError } = await supabase
+        // Insert record with transcription data
+        const { error: insertError } = await supabase
           .from('call_records')
-          .insert(record)
-          .select('id')
-          .single();
+          .insert({
+            ...record,
+            transcript,
+            status,
+            sub_disposition,
+            summary,
+            reason,
+            agent_response,
+            customer_response,
+          });
 
-        if (!insertError && insertedRecord) {
+        if (!insertError) {
           insertedCount++;
-          newRecordIds.push(insertedRecord.id);
         } else {
           console.log('Insert error for record:', record.system_call_id, insertError);
         }
@@ -294,28 +457,14 @@ serve(async (req) => {
         .update({ last_sync_at: new Date().toISOString() })
         .eq('id', integration.id);
 
-      // Fire-and-forget: Trigger transcription without waiting (returns immediately)
-      if (newRecordIds.length > 0) {
-        console.log(`Triggering transcribe-pending for ${newRecordIds.length} new records (fire-and-forget)`);
-        
-        // Don't await - let it run in background
-        fetch(`${supabaseUrl}/functions/v1/transcribe-pending`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({ recordIds: newRecordIds }),
-        }).catch(err => console.error('Transcription trigger error:', err));
-      }
-
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Synced ${insertedCount} new recordings out of ${allRecords.length} found`,
+          message: `Synced ${insertedCount} recordings (${transcribedCount} transcribed, ${failedCount} failed)`,
           total: allRecords.length,
           inserted: insertedCount,
-          transcription_triggered: newRecordIds.length > 0,
+          transcribed: transcribedCount,
+          failed: failedCount,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

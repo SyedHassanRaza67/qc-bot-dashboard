@@ -10,6 +10,8 @@ export const useViciSync = () => {
     message: string;
     total?: number;
     inserted?: number;
+    transcribed?: number;
+    failed?: number;
   } | null>(null);
 
   const syncRecordings = useCallback(async (dateFrom?: string, dateTo?: string) => {

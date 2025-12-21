@@ -176,7 +176,18 @@ const Dashboard = () => {
       ? dateRange.to.toISOString().split('T')[0] 
       : today.toISOString().split('T')[0];
     
-    await syncRecordings(fromDate, toDate);
+    toast.info('Syncing recordings...', {
+      description: 'Transcription happens automatically during sync',
+    });
+    
+    const result = await syncRecordings(fromDate, toDate);
+    
+    if (result?.transcribed !== undefined) {
+      toast.success('Sync complete with transcription', {
+        description: `${result.inserted} synced, ${result.transcribed} transcribed`,
+      });
+    }
+    
     refetch();
   };
 
