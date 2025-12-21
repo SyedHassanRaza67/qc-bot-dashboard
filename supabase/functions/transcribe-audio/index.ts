@@ -1,7 +1,5 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,225 +12,91 @@ serve(async (req) => {
   }
 
   try {
-    // Extract user from JWT token
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Missing authorization header');
-    }
+    if (!authHeader) throw new Error('Missing authorization header');
 
-    // Initialize Supabase client with user's JWT to get user info
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
-    // Create client with user's token to verify and get user
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
-    
-    const { data: { user }, error: userError } = await userClient.auth.getUser();
-    
-    if (userError || !user) {
-      console.error('Auth error:', userError);
-      throw new Error('Unauthorized: Invalid or expired token');
-    }
+    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
 
-    console.log('Authenticated user:', user.id);
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) throw new Error('Unauthorized');
 
     const { audio, fileName, metadata } = await req.json();
-    
-    if (!audio) {
-      throw new Error('No audio data provided');
-    }
+    if (!audio) throw new Error('No audio data provided');
 
-    console.log('Processing audio file:', fileName);
-
-    // Use service role client for storage and database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Upload audio to storage
+    // Upload to storage
     const fileExt = fileName.split('.').pop() || 'mp3';
     const storagePath = `${user.id}/${Date.now()}-${fileName}`;
     
-    // Decode base64 to binary
-    const audioBuffer = base64Decode(audio);
-    
-    console.log('Uploading audio to storage:', storagePath);
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('audio-recordings')
-      .upload(storagePath, audioBuffer, {
-        contentType: `audio/${fileExt === 'mp3' ? 'mpeg' : fileExt}`,
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('Storage upload error:', uploadError);
-      throw new Error(`Failed to upload audio: ${uploadError.message}`);
+    // Decode base64
+    const binaryString = atob(audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
 
-    console.log('Audio uploaded successfully:', uploadData.path);
+    const { error: uploadError } = await supabase.storage.from('audio-recordings').upload(storagePath, bytes, {
+      contentType: `audio/${fileExt === 'mp3' ? 'mpeg' : fileExt}`,
+    });
 
-    // Store the storage path (not public URL) - signed URLs will be generated on demand
-    const recordingUrl = storagePath;
-    console.log('Recording path stored:', recordingUrl);
+    if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
-    // Use Lovable AI (Gemini) for transcription and analysis
-    const analysisPrompt = `You are an expert audio transcription and call analysis AI. 
-
-Please analyze this audio file and provide:
-1. A full transcription of the audio
-2. Call status (sale, callback, not-interested, disqualified, or pending)
-3. Agent name (if mentioned)
-4. Sub-disposition (brief category)
-5. Reason for the status
-6. A concise summary (1-2 sentences)
-7. Campaign name (if mentioned, otherwise generate a relevant one)
-8. Publisher name (if mentioned, otherwise generate one like "Publisher A")
-
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
-{
-  "transcript": "full transcription of the audio",
-  "status": "sale|callback|not-interested|disqualified|pending",
-  "agentName": "agent name or null",
-  "subDisposition": "brief category",
-  "reason": "reason for status",
-  "summary": "concise summary",
-  "campaignName": "campaign name",
-  "publisher": "publisher name"
-}`;
-
-    console.log('Sending to Lovable AI for transcription and analysis...');
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call AI for transcription
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { 
-            role: 'system', 
-            content: 'You are an expert audio transcription and call analysis AI. Always return valid JSON only, no markdown formatting.' 
-          },
-          { 
-            role: 'user', 
-            content: [
-              { type: 'text', text: analysisPrompt },
-              { 
-                type: 'image_url', 
-                image_url: { 
-                  url: `data:audio/webm;base64,${audio}` 
-                } 
-              }
-            ]
-          }
+          { role: 'system', content: 'Transcribe and analyze. Return JSON only: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "agentName":"...", "subDisposition":"...", "reason":"...", "summary":"...", "campaignName":"...", "publisher":"..."}' },
+          { role: 'user', content: [{ type: 'text', text: 'Analyze:' }, { type: 'image_url', image_url: { url: `data:audio/webm;base64,${audio}` } }] }
         ],
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Lovable AI error:', response.status, errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Rate limit exceeded. Please try again later.');
-      }
-      if (response.status === 402) {
-        throw new Error('Payment required. Please add credits to your Lovable workspace.');
-      }
-      throw new Error(`AI analysis error: ${errorText}`);
-    }
+    let analysis = { transcript: 'Transcription pending', status: 'pending', agentName: null, subDisposition: 'Uploaded', reason: 'Processing', summary: 'Audio uploaded', campaignName: 'General', publisher: 'Manual Upload' };
 
-    const analysisData = await response.json();
-    let analysis;
-    
-    try {
-      const content = analysisData.choices[0].message.content;
-      console.log('AI Response:', content);
-      // Remove markdown code blocks if present
+    if (aiResponse.ok) {
+      const data = await aiResponse.json();
+      const content = data.choices?.[0]?.message?.content || '';
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      analysis = JSON.parse(jsonStr);
-    } catch (e) {
-      console.error('Failed to parse AI response:', e);
-      // Fallback values
-      analysis = {
-        transcript: 'Transcription failed - please try again',
-        status: 'pending',
-        agentName: null,
-        subDisposition: 'Requires Review',
-        reason: 'Automated analysis pending',
-        summary: 'Audio processing encountered an issue',
-        campaignName: 'General Campaign',
-        publisher: 'Publisher A'
-      };
+      try { analysis = { ...analysis, ...JSON.parse(jsonStr) }; } catch (e) { console.log('Parse error:', e); }
     }
 
-    console.log('Analysis complete:', analysis);
+    // Insert record
+    const { data: record, error: dbError } = await supabase.from('call_records').insert({
+      user_id: user.id,
+      caller_id: metadata?.callerId || '+1234567890',
+      publisher: analysis.publisher,
+      status: analysis.status,
+      agent_name: analysis.agentName,
+      sub_disposition: analysis.subDisposition,
+      duration: metadata?.duration || '0:00',
+      campaign_name: analysis.campaignName,
+      reason: analysis.reason,
+      summary: analysis.summary,
+      system_call_id: `SYS-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      publisher_id: `PUB-${Math.random().toString(36).substring(7).toUpperCase()}`,
+      buyer_id: `BUY-${Math.random().toString(36).substring(7).toUpperCase()}`,
+      transcript: analysis.transcript,
+      audio_file_name: fileName,
+      recording_url: storagePath,
+      upload_source: 'manual',
+    }).select().single();
 
-    // Calculate duration from audio metadata or use default
-    const duration = metadata?.duration || '0:00';
+    if (dbError) throw new Error(`Database error: ${dbError.message}`);
 
-    // Generate unique IDs
-    const systemCallId = `SYS-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const publisherId = `PUB-${Math.random().toString(36).substring(7).toUpperCase()}`;
-    const buyerId = `BUY-${Math.random().toString(36).substring(7).toUpperCase()}`;
-
-    // Store in database with user_id and recording URL
-    const { data: record, error: dbError } = await supabase
-      .from('call_records')
-      .insert({
-        user_id: user.id,
-        caller_id: metadata?.callerId || '+1234567890',
-        publisher: analysis.publisher,
-        status: analysis.status,
-        agent_name: analysis.agentName,
-        sub_disposition: analysis.subDisposition,
-        duration: duration,
-        campaign_name: analysis.campaignName,
-        reason: analysis.reason,
-        summary: analysis.summary,
-        system_call_id: systemCallId,
-        publisher_id: publisherId,
-        buyer_id: buyerId,
-        transcript: analysis.transcript,
-        audio_file_name: fileName,
-        recording_url: recordingUrl,
-        upload_source: 'manual', // Mark as manually uploaded
-      })
-      .select()
-      .single();
-
-    if (dbError) {
-      console.error('Database error:', dbError);
-      throw new Error(`Database error: ${dbError.message}`);
-    }
-
-    console.log('Record saved to database:', record.id);
-
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        record: record,
-        transcript: analysis.transcript,
-        analysis: analysis
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, record, transcript: analysis.transcript, analysis }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('Error in transcribe-audio function:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        success: false
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    console.error('Error:', error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error', success: false }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
