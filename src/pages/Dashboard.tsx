@@ -91,19 +91,19 @@ const Dashboard = () => {
   // Background transcription trigger (doesn't block UI)
   const triggerBackgroundTranscription = async (count: number) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
       
       console.log(`Auto-triggering transcription for ${count} pending records...`);
       
-      // Fire and forget - call the background function
+      // Fire and forget - call the background function with user's JWT token
       fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-background`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ user_id: user.id, limit: count, concurrency: 5 }),
+        body: JSON.stringify({ limit: count, concurrency: 5 }),
       }).catch(err => console.error('Background transcription error:', err));
     } catch (err) {
       console.error('Auto-transcription error:', err);
