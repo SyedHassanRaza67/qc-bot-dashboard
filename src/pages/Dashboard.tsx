@@ -340,9 +340,9 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Sync Controls */}
-            <div className="flex items-center gap-3">
-              {/* Live Status */}
+            {/* Consolidated Sync Controls */}
+            <div className="flex items-center gap-2">
+              {/* Live Status Toggle */}
               <LiveStatusIndicator
                 isLive={isLive}
                 healthStatus={healthStatus}
@@ -352,20 +352,23 @@ const Dashboard = () => {
                 onToggle={toggleLive}
               />
 
-              {/* Sync from Dialer Button */}
-              <Button 
-                onClick={handleSyncFromDialer} 
-                variant="outline" 
-                className="rounded-xl gap-2"
-                disabled={isSyncing}
-              >
-                {isSyncing ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CloudDownload className="h-4 w-4" />
-                )}
-                {isSyncing ? 'Syncing...' : 'Sync from Dialer'}
-              </Button>
+              {/* Manual Sync - only show when Live is OFF or when user needs to force sync */}
+              {!isLive && (
+                <Button 
+                  onClick={handleSyncFromDialer} 
+                  variant="outline" 
+                  size="sm"
+                  className="rounded-xl gap-2"
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="h-4 w-4" />
+                  )}
+                  {isSyncing ? 'Syncing...' : 'Manual Sync'}
+                </Button>
+              )}
             </div>
           </div>
         </div>
