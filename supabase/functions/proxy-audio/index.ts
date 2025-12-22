@@ -12,7 +12,7 @@ const ALLOWED_DOMAINS = [
   'recordings.vicidial.com',
   'vicidial.com',
   'vicibox.com',
-  // Supabase storage
+  '138.201.244.63',  // VICIdial server IP
 ];
 
 // Check if URL is from an allowed domain
@@ -27,6 +27,12 @@ function isAllowedUrl(url: string): boolean {
       if (urlObj.hostname === supabaseHostname || urlObj.hostname.endsWith('.supabase.co')) {
         return true;
       }
+    }
+    
+    // Allow any IP-based URL that serves VICIdial recordings
+    if (urlObj.pathname.includes('/RECORDINGS/')) {
+      console.log('Allowing VICIdial recording URL:', url);
+      return true;
     }
     
     // Check against allowed domains
