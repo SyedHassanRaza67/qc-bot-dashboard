@@ -113,19 +113,63 @@ serve(async (req) => {
 
     console.log('Proxying audio from:', url, 'for user:', user.id);
 
-    // Fetch the audio file from the external URL
-    const audioResponse = await fetch(url, {
-      headers: {
-        'Accept': 'audio/*',
-      },
-    });
+    // Helper function to try fetching with URL variations
+    async function tryFetchAudio(audioUrl: string): Promise<Response | null> {
+      const response = await fetch(audioUrl, {
+        headers: { 'Accept': 'audio/*' },
+      });
+      if (response.ok) return response;
+      return null;
+    }
 
-    if (!audioResponse.ok) {
-      console.error('Failed to fetch audio:', audioResponse.status, audioResponse.statusText);
+    // Generate URL variations to try
+    function getUrlVariations(originalUrl: string): string[] {
+      const urls = [originalUrl];
+      
+      // If it's a WAV in /RECORDINGS/, try MP3 version in /RECORDINGS/MP3/
+      if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/MP3/') && originalUrl.endsWith('.wav')) {
+        const mp3Url = originalUrl
+          .replace('/RECORDINGS/', '/RECORDINGS/MP3/')
+          .replace('.wav', '.mp3');
+        urls.push(mp3Url);
+      }
+      
+      // If it's a WAV anywhere, also try just changing extension
+      if (originalUrl.endsWith('.wav')) {
+        urls.push(originalUrl.replace('.wav', '.mp3'));
+      }
+      
+      // If in /RECORDINGS/ but not /MP3/, try adding /MP3/
+      if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/MP3/')) {
+        urls.push(originalUrl.replace('/RECORDINGS/', '/RECORDINGS/MP3/'));
+      }
+      
+      return [...new Set(urls)]; // Remove duplicates
+    }
+
+    const urlsToTry = getUrlVariations(url);
+    console.log('URL variations to try:', urlsToTry);
+
+    let audioResponse: Response | null = null;
+    let successUrl = '';
+
+    for (const tryUrl of urlsToTry) {
+      console.log('Trying URL:', tryUrl);
+      audioResponse = await tryFetchAudio(tryUrl);
+      if (audioResponse) {
+        successUrl = tryUrl;
+        console.log('Success with URL:', tryUrl);
+        break;
+      }
+      console.log('Failed with URL:', tryUrl);
+    }
+
+    if (!audioResponse) {
+      console.error('Failed to fetch audio from all URL variations');
       return new Response(
-        JSON.stringify({ error: `Failed to fetch audio: ${audioResponse.status}` }),
+        JSON.stringify({ error: 'Failed to fetch audio: file not found' }),
         { 
-          status: audioResponse.status, 
+          status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -134,7 +178,7 @@ serve(async (req) => {
     const audioBuffer = await audioResponse.arrayBuffer();
     const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
 
-    console.log('Audio fetched successfully, size:', audioBuffer.byteLength, 'type:', contentType);
+    console.log('Audio fetched successfully from:', successUrl, 'size:', audioBuffer.byteLength, 'type:', contentType);
 
     return new Response(audioBuffer, {
       headers: {

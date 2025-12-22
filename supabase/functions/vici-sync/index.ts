@@ -141,6 +141,15 @@ serve(async (req) => {
 
               // Build recording URL if not provided but we have the filename or can construct it
               let recordingUrl = location || null;
+              
+              // Normalize existing URL: convert /RECORDINGS/*.wav to /RECORDINGS/MP3/*.mp3
+              if (recordingUrl && recordingUrl.includes('/RECORDINGS/') && !recordingUrl.includes('/MP3/')) {
+                recordingUrl = recordingUrl
+                  .replace('/RECORDINGS/', '/RECORDINGS/MP3/')
+                  .replace('.wav', '.mp3');
+                console.log('Normalized recording URL:', recordingUrl);
+              }
+              
               if (!recordingUrl && filename) {
                 // Try to construct URL from filename - common VICIdial pattern
                 recordingUrl = `${baseUrl}/RECORDINGS/MP3/${filename}.mp3`;
