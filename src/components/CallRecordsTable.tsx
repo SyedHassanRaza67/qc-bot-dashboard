@@ -47,7 +47,7 @@ interface CallRecordsTableProps {
   totalCount?: number;
   onPageChange?: (page: number) => void;
   onTranscribeRecord?: (recordId: string) => void;
-  isTranscribing?: boolean;
+  transcribingRecordId?: string | null;
 }
 
 const getStatusBadge = (status: string, summary?: string) => {
@@ -143,7 +143,7 @@ const TableRowMemo = memo(({
   onCopy, 
   onDownload,
   onTranscribe,
-  isTranscribing
+  transcribingRecordId
 }: {
   record: CallRecord;
   index: number;
@@ -154,12 +154,14 @@ const TableRowMemo = memo(({
   onCopy: (e: React.MouseEvent, transcript?: string) => void;
   onDownload: (e: React.MouseEvent, recordingUrl?: string, id?: string) => void;
   onTranscribe?: (e: React.MouseEvent, id: string, summary?: string) => void;
-  isTranscribing?: boolean;
+  transcribingRecordId?: string | null;
 }) => {
   const needsTranscription = record.summary === 'Pending AI analysis' || 
                               record.summary?.startsWith('AI error:') || 
                               record.summary?.startsWith('Audio fetch failed') ||
                               record.summary?.includes('failed');
+  
+  const isThisRecordTranscribing = transcribingRecordId === record.id;
   
   return (
   <TableRow 
@@ -327,14 +329,14 @@ const TableRowMemo = memo(({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  disabled={isTranscribing}
+                  disabled={!!transcribingRecordId}
                   onClick={(e) => onTranscribe(e, record.id, record.summary)}
                 >
-                  <RotateCw className={`h-4 w-4 text-amber-500 ${isTranscribing ? 'animate-spin' : ''}`} />
+                  <RotateCw className={`h-4 w-4 text-amber-500 ${isThisRecordTranscribing ? 'animate-spin' : ''}`} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Retry Transcription</p>
+                <p>{isThisRecordTranscribing ? 'Transcribing...' : 'Retry Transcription'}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -473,7 +475,7 @@ export const CallRecordsTable = ({
   totalCount = 0,
   onPageChange,
   onTranscribeRecord,
-  isTranscribing
+  transcribingRecordId
 }: CallRecordsTableProps) => {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
@@ -655,7 +657,7 @@ export const CallRecordsTable = ({
               onCopy={handleCopyTranscript}
               onDownload={handleDownloadAudio}
               onTranscribe={handleTranscribe}
-              isTranscribing={isTranscribing}
+              transcribingRecordId={transcribingRecordId}
             />
           ))}
         </TableBody>

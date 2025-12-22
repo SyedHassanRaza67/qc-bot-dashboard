@@ -76,8 +76,9 @@ const Dashboard = () => {
   // Auto transcription hook with debouncing
   const { 
     isTranscribing, 
+    transcribingRecordId,
     triggerTranscription, 
-    transcribeNow 
+    transcribeSingleRecord 
   } = useAutoTranscription();
 
   // Persist filters to localStorage
@@ -205,11 +206,11 @@ const Dashboard = () => {
     setStatusFilter(filter);
   };
 
-  // Manual transcription handler - passed to table
+  // Manual transcription handler for specific record - passed to table
   const handleTranscribeRecord = useCallback(async (recordId: string) => {
-    await transcribeNow(1);
+    await transcribeSingleRecord(recordId);
     setTimeout(() => refetch(), 2000);
-  }, [transcribeNow, refetch]);
+  }, [transcribeSingleRecord, refetch]);
 
   const filteredRecords = records.filter(record =>
     searchQuery === "" || 
@@ -363,7 +364,7 @@ const Dashboard = () => {
           totalCount={totalCount}
           onPageChange={setCurrentPage}
           onTranscribeRecord={handleTranscribeRecord}
-          isTranscribing={isTranscribing}
+          transcribingRecordId={transcribingRecordId}
         />
 
         <CallDetailDialog 

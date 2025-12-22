@@ -7,6 +7,7 @@ const DEBOUNCE_MS = 3000;
 
 export const useAutoTranscription = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribingRecordId, setTranscribingRecordId] = useState<string | null>(null);
   const [lastTranscriptionResult, setLastTranscriptionResult] = useState<{
     success: boolean;
     processed?: number;
@@ -83,17 +84,19 @@ export const useAutoTranscription = () => {
     }, DEBOUNCE_MS);
   }, [isTranscribing]);
 
-  // Manual transcription trigger (immediate, no debounce)
-  const transcribeNow = useCallback(async (limit: number = 20) => {
-    if (isTranscribing) {
-      toast.info('Transcription already in progress');
+  // Single record transcription (for manual retry on specific record)
+  const transcribeSingleRecord = useCallback(async (recordId: string) => {
+    if (transcribingRecordId) {
+      toast.info('A transcription is already in progress');
       return;
     }
     
-    setIsTranscribing(true);
+    setTranscribingRecordId(recordId);
     try {
-      const { data, error } = await supabase.functions.invoke('transcribe-pending', {
-        body: { limit }
+      console.log(`[SingleTranscription] Starting for record: ${recordId}`);
+      
+      const { data, error } = await supabase.functions.invoke('transcribe-background', {
+        body: { record_id: recordId }
       });
       
       if (error) {
@@ -106,23 +109,29 @@ export const useAutoTranscription = () => {
             description: 'Please wait before transcribing more.',
           });
         } else {
-          throw error;
+          toast.error('Transcription failed', {
+            description: error.message,
+          });
         }
         return;
       }
       
-      toast.success('Transcription started', {
-        description: `Processing ${data?.processed || 0} records`
-      });
+      if (data?.success) {
+        toast.success('Transcription completed');
+      } else if (data?.fail_count > 0) {
+        toast.warning('Transcription had issues', {
+          description: 'Check the record for details',
+        });
+      }
       
       return data;
     } catch (err) {
-      console.error('[ManualTranscription] Error:', err);
-      toast.error('Failed to start transcription');
+      console.error('[SingleTranscription] Error:', err);
+      toast.error('Failed to transcribe record');
     } finally {
-      setIsTranscribing(false);
+      setTranscribingRecordId(null);
     }
-  }, [isTranscribing]);
+  }, [transcribingRecordId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -135,8 +144,9 @@ export const useAutoTranscription = () => {
 
   return {
     isTranscribing,
+    transcribingRecordId,
     triggerTranscription,
-    transcribeNow,
+    transcribeSingleRecord,
     lastTranscriptionResult,
   };
 };
