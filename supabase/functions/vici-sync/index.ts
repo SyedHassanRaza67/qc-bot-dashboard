@@ -111,6 +111,11 @@ serve(async (req) => {
 
             const text = await response.text();
             const lines = text.trim().split('\n');
+            
+            // Debug: Log first few raw API response lines
+            if (lines.length > 0 && lines[0] !== 'NO RECORDINGS FOUND') {
+              console.log(`Raw API response for agent ${agentId} on ${queryDate} (first 3 lines):`, lines.slice(0, 3));
+            }
 
             for (const line of lines) {
               const trimmed = line.trim();
