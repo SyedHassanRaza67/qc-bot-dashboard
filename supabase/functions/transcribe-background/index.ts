@@ -195,26 +195,50 @@ serve(async (req) => {
     // Get user_id from authenticated user, not from request body
     const userId = user.id;
     const body = await req.json().catch(() => ({}));
+    const recordId = body.record_id; // Single record transcription
     const limit = body.limit || 10;
-    const concurrency = body.concurrency || 5; // Process 5 at a time
+    const concurrency = body.concurrency || 1; // Default to sequential (1 at a time)
 
-    console.log(`Transcribe-background called for authenticated user: ${userId}, limit: ${limit}, concurrency: ${concurrency}`);
+    console.log(`Transcribe-background called for authenticated user: ${userId}, limit: ${limit}, concurrency: ${concurrency}, recordId: ${recordId || 'batch mode'}`);
 
-    // Find pending records for this user
-    const { data: pendingRecords, error: fetchError } = await supabase
-      .from('call_records')
-      .select('id, recording_url, system_call_id')
-      .eq('user_id', userId)
-      .or('summary.eq.Pending AI analysis,summary.ilike.Transcription failed%')
-      .order('created_at', { ascending: true })
-      .limit(limit);
+    let pendingRecords;
+    
+    // If record_id is provided, transcribe only that specific record
+    if (recordId) {
+      console.log(`[transcribe-background] Single record mode: ${recordId}`);
+      const { data, error: queryError } = await supabase
+        .from('call_records')
+        .select('id, recording_url, system_call_id')
+        .eq('id', recordId)
+        .eq('user_id', userId)
+        .single();
 
-    if (fetchError) {
-      console.error('Fetch error:', fetchError);
-      return new Response(
-        JSON.stringify({ success: false, error: fetchError.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      if (queryError) {
+        console.error('Single record fetch error:', queryError);
+        return new Response(
+          JSON.stringify({ success: false, error: queryError.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+      pendingRecords = data ? [data] : [];
+    } else {
+      // Batch mode: Find pending records for this user
+      const { data, error: fetchError } = await supabase
+        .from('call_records')
+        .select('id, recording_url, system_call_id')
+        .eq('user_id', userId)
+        .or('summary.eq.Pending AI analysis,summary.ilike.Transcription failed%')
+        .order('created_at', { ascending: true })
+        .limit(limit);
+
+      if (fetchError) {
+        console.error('Fetch error:', fetchError);
+        return new Response(
+          JSON.stringify({ success: false, error: fetchError.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+      pendingRecords = data || [];
     }
 
     if (!pendingRecords || pendingRecords.length === 0) {
