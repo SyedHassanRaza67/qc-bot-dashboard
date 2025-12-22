@@ -1,17 +1,18 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Search, RefreshCw, CloudDownload, Upload, Phone, Radio, Zap, Settings, RotateCcw } from "lucide-react";
+import { Search, RefreshCw, CloudDownload, Upload, Phone, Zap, Settings, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
 import { StatsGrid } from "@/components/StatsGrid";
 import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
-import { SyncIndicator } from "@/components/SyncIndicator";
+import { LiveStatusIndicator } from "@/components/LiveStatusIndicator";
 import { CallDetailDialog } from "@/components/CallDetailDialog";
 import { useCallRecords, useCallStats } from "@/hooks/useCallRecords";
-import { useViciSync } from "@/hooks/useViciSync";
+import { useLiveSync } from "@/hooks/useLiveSync";
+import { useAutoTranscription } from "@/hooks/useAutoTranscription";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -24,14 +25,18 @@ const STORAGE_KEYS = {
 
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
-  const [isLive, setIsLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  // Default to today's date to reduce initial load
+  
+  // Default to last 7 days to show more data
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return { from: today, to: today };
+    today.setHours(23, 59, 59, 999);
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    return { from: sevenDaysAgo, to: today };
   });
+  
   const [currentPage, setCurrentPage] = useState(1);
   
   // Restore filters from localStorage
@@ -44,8 +49,25 @@ const Dashboard = () => {
   
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+
+  // Live sync hook with auto-sync and health status
+  const { 
+    isLive, 
+    toggleLive, 
+    healthStatus, 
+    lastSyncAt, 
+    lastError, 
+    isSyncing, 
+    syncRecordings 
+  } = useLiveSync();
+
+  // Auto transcription hook with debouncing
+  const { 
+    isTranscribing, 
+    triggerTranscription, 
+    transcribeNow 
+  } = useAutoTranscription();
 
   // Persist filters to localStorage
   useEffect(() => {
@@ -68,7 +90,6 @@ const Dashboard = () => {
     currentPage
   );
   const { data: stats, refetch: refetchStats } = useCallStats(dateRange, sourceFilter);
-  const { isSyncing, syncRecordings } = useViciSync();
 
   const records = paginatedData?.records || [];
   const totalCount = paginatedData?.totalCount || 0;
@@ -76,65 +97,18 @@ const Dashboard = () => {
 
   // Count pending records and auto-trigger transcription
   useEffect(() => {
-    const count = records.filter(r => 
-      r.summary === 'Pending AI analysis' || r.summary === 'Transcribing...'
-    ).length;
-    setPendingCount(count);
+    const pending = records.filter(r => r.summary === 'Pending AI analysis');
+    const transcribing = records.filter(r => r.summary === 'Transcribing...');
     
-    // Auto-trigger transcription when pending records exist and not already transcribing
-    const pendingForTranscription = records.filter(r => r.summary === 'Pending AI analysis').length;
-    if (pendingForTranscription > 0 && !isTranscribing) {
-      triggerBackgroundTranscription(pendingForTranscription);
+    setPendingCount(pending.length + transcribing.length);
+    
+    // Auto-trigger transcription when pending records exist (debounced)
+    if (pending.length > 0 && !isTranscribing) {
+      triggerTranscription(pending.length);
     }
-  }, [records]);
+  }, [records, isTranscribing, triggerTranscription]);
 
-  // Background transcription trigger (doesn't block UI)
-  const triggerBackgroundTranscription = async (count: number) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      
-      console.log(`Auto-triggering transcription for ${count} pending records...`);
-      
-      // Fire and forget - call the background function with user's JWT token
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-background`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ limit: count, concurrency: 5 }),
-      }).catch(err => console.error('Background transcription error:', err));
-    } catch (err) {
-      console.error('Auto-transcription error:', err);
-    }
-  };
-
-  // Handle transcribe all pending records (manual button)
-  const handleTranscribeAll = async () => {
-    setIsTranscribing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('transcribe-pending', {
-        body: { limit: 20 }
-      });
-      
-      if (error) throw error;
-      
-      toast.success('Transcription started', {
-        description: `Processing ${data?.processed || 0} records`
-      });
-      
-      // Refetch after a short delay
-      setTimeout(() => refetch(), 2000);
-    } catch (err) {
-      console.error('Transcription error:', err);
-      toast.error('Failed to start transcription');
-    } finally {
-      setIsTranscribing(false);
-    }
-  };
-
-  // Real-time subscription - always on for auto-updates (transcription status changes)
+  // Real-time subscription - triggers transcription on new inserts
   useEffect(() => {
     const channel = supabase
       .channel('dashboard-call-records')
@@ -150,21 +124,28 @@ const Dashboard = () => {
           refetch();
           refetchStats();
           
-          // Only show toasts in Live mode
-          if (isLive) {
-            if (payload.eventType === 'INSERT') {
+          // On INSERT, trigger auto-transcription for the new record
+          if (payload.eventType === 'INSERT') {
+            const newRecord = payload.new as any;
+            if (newRecord?.summary === 'Pending AI analysis') {
+              triggerTranscription(1); // Will be debounced
+            }
+            
+            if (isLive) {
               toast.success('New call record received!', {
-                description: `Call ID: ${(payload.new as any).system_call_id}`,
+                description: `Call ID: ${newRecord.system_call_id}`,
               });
-            } else if (payload.eventType === 'UPDATE') {
-              const newData = payload.new as any;
-              const oldData = payload.old as any;
-              // Check if transcription completed
-              if (oldData?.summary === 'Transcribing...' && newData?.summary !== 'Transcribing...') {
-                toast.success('Transcription completed!', {
-                  description: `Record updated with AI analysis`,
-                });
-              }
+            }
+          } else if (payload.eventType === 'UPDATE' && isLive) {
+            const newData = payload.new as any;
+            const oldData = payload.old as any;
+            // Check if transcription completed
+            if (oldData?.summary === 'Transcribing...' && 
+                newData?.summary !== 'Transcribing...' &&
+                newData?.summary !== 'Pending AI analysis') {
+              toast.success('Transcription completed!', {
+                description: `Record updated with AI analysis`,
+              });
             }
           }
         }
@@ -172,43 +153,21 @@ const Dashboard = () => {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('Real-time subscription active');
-          if (isLive) {
-            toast.success('Live mode activated', {
-              description: 'You will receive real-time updates',
-            });
-          }
         }
       });
 
     return () => {
       supabase.removeChannel(channel);
-      if (isLive) {
-        toast.info('Live mode deactivated');
-      }
     };
-  }, [isLive, refetch, refetchStats]);
-
-  const handleLiveToggle = () => {
-    setIsLive(!isLive);
-  };
+  }, [isLive, refetch, refetchStats, triggerTranscription]);
 
   const handleSyncFromDialer = async () => {
-    // Always sync last 7 days to ensure we catch recent recordings
     const today = new Date();
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(today.getDate() - 7);
     
-    // Check if date range is just "today" (default) - if so, use 7 days instead
-    const isDefaultTodayOnly = dateRange?.from && dateRange?.to && 
-      dateRange.from.toDateString() === today.toDateString() &&
-      dateRange.to.toDateString() === today.toDateString();
-    
-    const fromDate = isDefaultTodayOnly 
-      ? sevenDaysAgo.toISOString().split('T')[0]
-      : (dateRange?.from?.toISOString().split('T')[0] ?? sevenDaysAgo.toISOString().split('T')[0]);
-    const toDate = dateRange?.to 
-      ? dateRange.to.toISOString().split('T')[0] 
-      : today.toISOString().split('T')[0];
+    const fromDate = dateRange?.from?.toISOString().split('T')[0] ?? sevenDaysAgo.toISOString().split('T')[0];
+    const toDate = dateRange?.to?.toISOString().split('T')[0] ?? today.toISOString().split('T')[0];
     
     toast.info('Syncing recordings...', {
       description: `Fetching from ${fromDate} to ${toDate}`,
@@ -216,27 +175,9 @@ const Dashboard = () => {
     
     const result = await syncRecordings(fromDate, toDate);
     
-    if (result?.success) {
-      // Expand date range to show synced data if we were on default today-only
-      if (isDefaultTodayOnly) {
-        setDateRange({ from: sevenDaysAgo, to: today });
-      }
-      
-      if (result?.inserted > 0) {
-        toast.success('Sync complete', {
-          description: `${result.inserted} new recordings synced`,
-        });
-      }
-    }
-    
-    // If sync is in progress (timeout happened), refetch after delay
-    if (result?.inProgress) {
-      if (isDefaultTodayOnly) {
-        setDateRange({ from: sevenDaysAgo, to: today });
-      }
-      setTimeout(() => refetch(), 5000);
-    } else {
-      refetch();
+    // Refresh data after sync
+    if (result?.success || result?.inProgress) {
+      setTimeout(() => refetch(), result?.inProgress ? 5000 : 1000);
     }
   };
 
@@ -251,6 +192,11 @@ const Dashboard = () => {
 
   const handleStatusFilterChange = (filter: string) => {
     setStatusFilter(filter);
+  };
+
+  const handleTranscribeAll = async () => {
+    await transcribeNow(20);
+    setTimeout(() => refetch(), 2000);
   };
 
   const filteredRecords = records.filter(record =>
@@ -277,7 +223,6 @@ const Dashboard = () => {
             <p className="text-muted-foreground">Track, manage, and analyze your call recordings</p>
           </div>
           <div className="flex items-center gap-3">
-            <SyncIndicator isSyncing={isSyncing} />
             <Link to="/settings">
               <Button variant="outline" size="icon" className="rounded-xl">
                 <Settings className="h-4 w-4" />
@@ -298,17 +243,15 @@ const Dashboard = () => {
           </div>
           
           <div className="flex gap-2">
-            <Button
-              onClick={handleLiveToggle}
-              className={`rounded-xl gap-2 transition-all duration-200 ${
-                isLive 
-                  ? 'bg-green-500 hover:bg-green-600 text-white shadow-lg shadow-green-500/30' 
-                  : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-              }`}
-            >
-              <Radio className={`h-4 w-4 ${isLive ? 'animate-pulse' : ''}`} />
-              Live
-            </Button>
+            {/* Live Status Indicator with health colors */}
+            <LiveStatusIndicator
+              isLive={isLive}
+              healthStatus={healthStatus}
+              isSyncing={isSyncing}
+              lastError={lastError}
+              lastSyncAt={lastSyncAt}
+              onToggle={toggleLive}
+            />
 
             <Button
               variant={autoRefresh ? "default" : "outline"}
