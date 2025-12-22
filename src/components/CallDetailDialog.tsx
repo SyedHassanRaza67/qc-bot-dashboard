@@ -91,21 +91,35 @@ export const CallDetailDialog = ({ recordId, open, onOpenChange }: CallDetailDia
     
     if (isExternalUrl) {
       try {
+        // Get the current session for auth token
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          toast.error("Please log in to play audio");
+          return;
+        }
+        
         const projectId = 'dxwowuztnmjewkncptji';
         const proxyUrl = `https://${projectId}.supabase.co/functions/v1/proxy-audio`;
         
         const response = await fetch(proxyUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({ url: record.recordingUrl }),
         });
         
-        if (!response.ok) throw new Error('Failed to proxy audio');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to proxy audio');
+        }
         
         const audioBlob = await response.blob();
         finalAudioUrl = URL.createObjectURL(audioBlob);
       } catch (err) {
-        toast.error("Failed to load audio");
+        console.error('Audio proxy error:', err);
+        toast.error(err instanceof Error ? err.message : "Failed to load audio");
         return;
       }
     } else if (signedUrl) {
