@@ -118,12 +118,14 @@ serve(async (req) => {
 
               const parts = trimmed.split('|').map(p => p.trim());
               let startDateStr = '', recordingId = '', leadId = '', lengthInSec = '0', location = '', agentFromLine = agentId;
+              let filename = '';
 
               if (parts.length === 6 && isDateTime(parts[0])) {
                 [startDateStr, agentFromLine, leadId, recordingId, lengthInSec, location] = parts;
               } else if (parts.length >= 6) {
                 recordingId = parts[0]; leadId = parts[1]; startDateStr = parts[5];
                 lengthInSec = parts[7] || '0'; location = parts[9] || ''; agentFromLine = parts[10] || agentId;
+                filename = parts[4] || ''; // filename is usually at position 4
               } else continue;
 
               if (!recordingId || isNaN(Number(recordingId))) continue;
@@ -132,13 +134,28 @@ serve(async (req) => {
               const mins = Math.floor(durationSecs / 60);
               const secs = durationSecs % 60;
 
+              // Build recording URL if not provided but we have the filename or can construct it
+              let recordingUrl = location || null;
+              if (!recordingUrl && filename) {
+                // Try to construct URL from filename - common VICIdial pattern
+                recordingUrl = `${baseUrl}/RECORDINGS/MP3/${filename}.mp3`;
+              } else if (!recordingUrl && startDateStr && leadId) {
+                // Try to construct from timestamp and lead_id - common VICIdial naming pattern
+                // Format: YYYYMMDD-HHMMSS_LEADID-all.mp3
+                const dateMatch = startDateStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+                if (dateMatch) {
+                  const formattedDate = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${dateMatch[4]}${dateMatch[5]}${dateMatch[6]}`;
+                  recordingUrl = `${baseUrl}/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`;
+                }
+              }
+
               allRecords.push({
                 system_call_id: `VICI-${recordingId}`,
                 caller_id: leadId || 'unknown',
                 lead_id: leadId || null,
                 timestamp: toIso(startDateStr, queryDate),
                 duration: `${mins}:${secs.toString().padStart(2, '0')}`,
-                recording_url: location || null,
+                recording_url: recordingUrl,
                 user_id: user.id,
                 publisher_id: 'vicidial',
                 buyer_id: leadId || 'unknown',
