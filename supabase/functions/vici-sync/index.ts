@@ -212,14 +212,16 @@ serve(async (req) => {
       // Auto-trigger background transcription if we inserted new records
       if (insertedCount > 0) {
         console.log('Triggering background transcription for new records...');
-        // Fire and forget - don't wait for transcription to complete
+        // Use the user's original token to call the transcribe-background function
+        // This ensures proper authentication since transcribe-background now requires JWT
+        const userToken = req.headers.get('Authorization')?.replace('Bearer ', '') || '';
         fetch(`${supabaseUrl}/functions/v1/transcribe-background`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Authorization': `Bearer ${userToken}`,
           },
-          body: JSON.stringify({ user_id: user.id, limit: insertedCount, concurrency: 5 }),
+          body: JSON.stringify({ limit: insertedCount, concurrency: 5 }),
         }).catch(err => console.error('Background transcription trigger failed:', err));
       }
 

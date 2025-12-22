@@ -152,20 +152,33 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const body = await req.json().catch(() => ({}));
-    const userId = body.user_id;
-    const limit = body.limit || 10;
-    const concurrency = body.concurrency || 5; // Process 5 at a time
-
-    if (!userId) {
+    // Authenticate the user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, error: 'user_id required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ success: false, error: 'Unauthorized: No authorization header' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
 
-    console.log(`Transcribe-background called for user: ${userId}, limit: ${limit}, concurrency: ${concurrency}`);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized: Invalid token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Get user_id from authenticated user, not from request body
+    const userId = user.id;
+    const body = await req.json().catch(() => ({}));
+    const limit = body.limit || 10;
+    const concurrency = body.concurrency || 5; // Process 5 at a time
+
+    console.log(`Transcribe-background called for authenticated user: ${userId}, limit: ${limit}, concurrency: ${concurrency}`);
 
     // Find pending records for this user
     const { data: pendingRecords, error: fetchError } = await supabase
