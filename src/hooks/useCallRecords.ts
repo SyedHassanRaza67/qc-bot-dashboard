@@ -65,10 +65,11 @@ export const useCallRecords = (
   return useQuery({
     queryKey: ['call-records', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), statusFilter, sourceFilter, page, pageSize],
     queryFn: async (): Promise<PaginatedCallRecords> => {
-      // First, get total count
+      // First, get total count (exclude 0-second duration calls)
       let countQuery = supabase
         .from('call_records')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .neq('duration', '0:00');
 
       // Apply filters for count - use UTC boundaries for consistent filtering
       if (dateRange?.from) {
@@ -105,6 +106,7 @@ export const useCallRecords = (
       let query = supabase
         .from('call_records')
         .select('*')
+        .neq('duration', '0:00')  // Exclude 0-second duration calls
         .order('timestamp', { ascending: false })
         .range(from, to);
 
@@ -219,7 +221,8 @@ export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
     queryFn: async () => {
       let query = supabase
         .from('call_records')
-        .select('status, duration, publisher, campaign_name, timestamp, upload_source');
+        .select('status, duration, publisher, campaign_name, timestamp, upload_source')
+        .neq('duration', '0:00');  // Exclude 0-second duration calls
 
       // Apply source filter
       if (sourceFilter && sourceFilter !== 'all') {
