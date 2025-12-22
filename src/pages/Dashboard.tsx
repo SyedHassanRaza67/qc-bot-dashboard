@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { Search, RefreshCw, CloudDownload, Upload, Phone, Settings, RotateCcw } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
 import { StatsGrid } from "@/components/StatsGrid";
-import { CampaignFilters } from "@/components/CampaignFilters";
 import { CallRecordsTable } from "@/components/CallRecordsTable";
 import { LiveStatusIndicator } from "@/components/LiveStatusIndicator";
 import { CallDetailDialog } from "@/components/CallDetailDialog";
@@ -25,7 +25,6 @@ const STORAGE_KEYS = {
 };
 
 const Dashboard = () => {
-  const [autoRefresh, setAutoRefresh] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Default to today unless user manually changed the filter
@@ -245,53 +244,29 @@ const Dashboard = () => {
         </div>
 
         {/* Search & Controls */}
-        <div className="flex flex-col md:flex-row gap-4 items-center mb-8">
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center mb-6">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by Campaign or System Call ID..."
-              className="pl-10 rounded-xl"
+              className="pl-10 rounded-xl h-10"
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           
-          <div className="flex gap-2">
-            {/* Live Status Indicator with health colors */}
-            <LiveStatusIndicator
-              isLive={isLive}
-              healthStatus={healthStatus}
-              isSyncing={isSyncing}
-              lastError={lastError}
-              lastSyncAt={lastSyncAt}
-              onToggle={toggleLive}
-            />
-
-            <Button
-              variant={autoRefresh ? "default" : "outline"}
-              size="icon"
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className="rounded-xl transition-all duration-200 hover:shadow-md"
-            >
-              <RefreshCw className={`h-4 w-4 ${autoRefresh ? 'animate-spin' : ''}`} />
-            </Button>
-            
+          <div className="flex flex-wrap gap-2 items-center">
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={handleDateRangeChange}
             />
 
             <Button 
-              onClick={handleSyncFromDialer} 
+              onClick={() => refetch()} 
               variant="outline" 
-              className="rounded-xl"
-              disabled={isSyncing}
+              size="icon"
+              className="rounded-xl h-10 w-10"
             >
-              <CloudDownload className="h-4 w-4 mr-2" />
-              Sync from Dialer
-            </Button>
-
-            <Button onClick={() => refetch()} variant="outline" className="rounded-xl">
-              Refresh Data
+              <RefreshCw className="h-4 w-4" />
             </Button>
 
             <Button 
@@ -312,48 +287,90 @@ const Dashboard = () => {
                 toast.success('Filters reset');
               }} 
               variant="outline" 
-              className="rounded-xl gap-2"
+              size="icon"
+              className="rounded-xl h-10 w-10"
             >
               <RotateCcw className="h-4 w-4" />
-              Reset
             </Button>
-
           </div>
         </div>
 
-        {/* Source Filter Buttons */}
-        <div className="flex gap-3 mb-6">
-          <Button
-            variant={sourceFilter === 'all' ? 'default' : 'outline'}
-            onClick={() => handleSourceFilterChange('all')}
-            className="rounded-xl"
-          >
-            All Calls
-          </Button>
-          <Button
-            variant={sourceFilter === 'manual' ? 'default' : 'outline'}
-            onClick={() => handleSourceFilterChange('manual')}
-            className="rounded-xl gap-2"
-          >
-            <Upload className="h-4 w-4" />
-            Manual Uploads
-          </Button>
-          <Button
-            variant={sourceFilter === 'vicidial' ? 'default' : 'outline'}
-            onClick={() => handleSourceFilterChange('vicidial')}
-            className="rounded-xl gap-2"
-          >
-            <Phone className="h-4 w-4" />
-            VICIdial
-          </Button>
+        {/* Sync Controls & Source Filters Card */}
+        <div className="bg-card border border-border rounded-xl p-4 mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            {/* Source Filters */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground mr-2">Source:</span>
+              <div className="inline-flex rounded-lg border border-border p-1 bg-muted/30">
+                <button
+                  onClick={() => handleSourceFilterChange('all')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200',
+                    sourceFilter === 'all' 
+                      ? 'bg-primary text-primary-foreground shadow-sm' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  )}
+                >
+                  All Calls
+                </button>
+                <button
+                  onClick={() => handleSourceFilterChange('manual')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-1.5',
+                    sourceFilter === 'manual' 
+                      ? 'bg-primary text-primary-foreground shadow-sm' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  )}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Manual
+                </button>
+                <button
+                  onClick={() => handleSourceFilterChange('vicidial')}
+                  className={cn(
+                    'px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-1.5',
+                    sourceFilter === 'vicidial' 
+                      ? 'bg-primary text-primary-foreground shadow-sm' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  )}
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                  VICIdial
+                </button>
+              </div>
+            </div>
+
+            {/* Sync Controls */}
+            <div className="flex items-center gap-3">
+              {/* Live Status */}
+              <LiveStatusIndicator
+                isLive={isLive}
+                healthStatus={healthStatus}
+                isSyncing={isSyncing}
+                lastError={lastError}
+                lastSyncAt={lastSyncAt}
+                onToggle={toggleLive}
+              />
+
+              {/* Sync from Dialer Button */}
+              <Button 
+                onClick={handleSyncFromDialer} 
+                variant="outline" 
+                className="rounded-xl gap-2"
+                disabled={isSyncing}
+              >
+                {isSyncing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CloudDownload className="h-4 w-4" />
+                )}
+                {isSyncing ? 'Syncing...' : 'Sync from Dialer'}
+              </Button>
+            </div>
+          </div>
         </div>
 
         <StatsGrid stats={stats} activeFilter={statusFilter} onFilterClick={handleStatusFilterChange} />
-        
-        <CampaignFilters
-          autoRefresh={autoRefresh}
-          onAutoRefreshToggle={() => setAutoRefresh(!autoRefresh)}
-        />
         
         <CallRecordsTable 
           records={filteredRecords} 
