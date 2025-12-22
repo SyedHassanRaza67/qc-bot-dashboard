@@ -1,7 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { startOfDay, startOfWeek, startOfMonth, subDays, endOfDay } from "date-fns";
+import { subDays } from "date-fns";
 import { DateRange } from "react-day-picker";
+
+// UTC-aware date functions to ensure consistent filtering with database timestamps
+const getUTCStartOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+};
+
+const getUTCEndOfDay = (date: Date): Date => {
+  const d = new Date(date);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+};
 
 export interface CallRecord {
   id: string;
@@ -57,12 +70,16 @@ export const useCallRecords = (
         .from('call_records')
         .select('*', { count: 'exact', head: true });
 
-      // Apply filters for count
+      // Apply filters for count - use UTC boundaries for consistent filtering
       if (dateRange?.from) {
-        countQuery = countQuery.gte('timestamp', startOfDay(dateRange.from).toISOString());
+        const utcStart = getUTCStartOfDay(dateRange.from);
+        console.log('Date filter - From (UTC):', utcStart.toISOString());
+        countQuery = countQuery.gte('timestamp', utcStart.toISOString());
       }
       if (dateRange?.to) {
-        countQuery = countQuery.lte('timestamp', endOfDay(dateRange.to).toISOString());
+        const utcEnd = getUTCEndOfDay(dateRange.to);
+        console.log('Date filter - To (UTC):', utcEnd.toISOString());
+        countQuery = countQuery.lte('timestamp', utcEnd.toISOString());
       }
       if (statusFilter && statusFilter !== 'all') {
         countQuery = countQuery.eq('status', statusFilter);
@@ -91,12 +108,12 @@ export const useCallRecords = (
         .order('timestamp', { ascending: false })
         .range(from, to);
 
-      // Apply date range filter
+      // Apply date range filter - use UTC boundaries
       if (dateRange?.from) {
-        query = query.gte('timestamp', startOfDay(dateRange.from).toISOString());
+        query = query.gte('timestamp', getUTCStartOfDay(dateRange.from).toISOString());
       }
       if (dateRange?.to) {
-        query = query.lte('timestamp', endOfDay(dateRange.to).toISOString());
+        query = query.lte('timestamp', getUTCEndOfDay(dateRange.to).toISOString());
       }
 
       // Apply status filter
@@ -219,11 +236,11 @@ export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
       const allRecords = data || [];
       const now = new Date();
 
-      // Calculate date ranges for current and previous periods
+      // Calculate date ranges for current and previous periods - use UTC
       const getDateRanges = () => {
         if (dateRange?.from) {
-          const currentStart = startOfDay(dateRange.from);
-          const currentEnd = dateRange.to ? endOfDay(dateRange.to) : endOfDay(now);
+          const currentStart = getUTCStartOfDay(dateRange.from);
+          const currentEnd = dateRange.to ? getUTCEndOfDay(dateRange.to) : getUTCEndOfDay(now);
           const rangeDays = Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24));
           const prevStart = subDays(currentStart, rangeDays);
           const prevEnd = currentStart;
