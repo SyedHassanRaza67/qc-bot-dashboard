@@ -92,7 +92,10 @@ async function processRecord(
       }),
     });
 
-    if (!aiResponse.ok) throw new Error(`AI failed: ${aiResponse.status}`);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text().catch(() => '');
+      throw new Error(`AI failed: ${aiResponse.status} - ${errorText.substring(0, 100)}`);
+    }
 
     const data = await aiResponse.json();
     const content = data.choices?.[0]?.message?.content || '';
@@ -130,7 +133,24 @@ async function processRecord(
     return true;
   } catch (err) {
     console.error(`Failed ${record.id}:`, err);
-    await supabase.from('call_records').update({ summary: 'Transcription failed' }).eq('id', record.id);
+    
+    // Store specific error message for better diagnostics
+    let errorSummary = 'Transcription failed';
+    const errMsg = err instanceof Error ? err.message : String(err);
+    
+    if (errMsg.includes('402')) {
+      errorSummary = 'Transcription failed: AI credits exhausted (402)';
+    } else if (errMsg.includes('429')) {
+      errorSummary = 'Transcription failed: AI rate limited (429)';
+    } else if (errMsg.includes('Audio fetch failed')) {
+      errorSummary = `Transcription failed: ${errMsg}`;
+    } else if (errMsg.includes('aborted') || errMsg.includes('timeout')) {
+      errorSummary = 'Transcription failed: Audio fetch timeout';
+    } else {
+      errorSummary = `Transcription failed: ${errMsg.substring(0, 100)}`;
+    }
+    
+    await supabase.from('call_records').update({ summary: errorSummary }).eq('id', record.id);
     return false;
   }
 }
