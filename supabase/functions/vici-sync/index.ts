@@ -136,6 +136,13 @@ serve(async (req) => {
               if (!recordingId || isNaN(Number(recordingId))) continue;
 
               const durationSecs = parseInt(lengthInSec, 10) || 0;
+              
+              // Skip calls with 0 second duration - these are rejected/failed calls
+              if (durationSecs === 0) {
+                console.log(`Skipping record ${recordingId} - 0 second duration`);
+                continue;
+              }
+              
               const mins = Math.floor(durationSecs / 60);
               const secs = durationSecs % 60;
 
