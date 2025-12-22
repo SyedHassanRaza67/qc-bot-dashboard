@@ -1,5 +1,5 @@
 import { useState, memo, useCallback } from "react";
-import { Eye, Copy, Download, Play, Square, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, Copy, Download, Play, Square, ChevronLeft, ChevronRight, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -46,6 +46,8 @@ interface CallRecordsTableProps {
   totalPages?: number;
   totalCount?: number;
   onPageChange?: (page: number) => void;
+  onTranscribeRecord?: (recordId: string) => void;
+  isTranscribing?: boolean;
 }
 
 const getStatusBadge = (status: string, summary?: string) => {
@@ -139,7 +141,9 @@ const TableRowMemo = memo(({
   onPlay, 
   onView, 
   onCopy, 
-  onDownload 
+  onDownload,
+  onTranscribe,
+  isTranscribing
 }: {
   record: CallRecord;
   index: number;
@@ -149,7 +153,15 @@ const TableRowMemo = memo(({
   onView: (id: string) => void;
   onCopy: (e: React.MouseEvent, transcript?: string) => void;
   onDownload: (e: React.MouseEvent, recordingUrl?: string, id?: string) => void;
-}) => (
+  onTranscribe?: (e: React.MouseEvent, id: string, summary?: string) => void;
+  isTranscribing?: boolean;
+}) => {
+  const needsTranscription = record.summary === 'Pending AI analysis' || 
+                              record.summary?.startsWith('AI error:') || 
+                              record.summary?.startsWith('Audio fetch failed') ||
+                              record.summary?.includes('failed');
+  
+  return (
   <TableRow 
     className={`table-row cursor-pointer ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}
     onClick={() => onView(record.id)}
@@ -306,10 +318,32 @@ const TableRowMemo = memo(({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+        
+        {needsTranscription && onTranscribe && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  disabled={isTranscribing}
+                  onClick={(e) => onTranscribe(e, record.id, record.summary)}
+                >
+                  <RotateCw className={`h-4 w-4 text-amber-500 ${isTranscribing ? 'animate-spin' : ''}`} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Retry Transcription</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </TableCell>
   </TableRow>
-));
+  );
+});
 
 TableRowMemo.displayName = 'TableRowMemo';
 
@@ -437,7 +471,9 @@ export const CallRecordsTable = ({
   currentPage = 1,
   totalPages = 1,
   totalCount = 0,
-  onPageChange
+  onPageChange,
+  onTranscribeRecord,
+  isTranscribing
 }: CallRecordsTableProps) => {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
@@ -568,6 +604,12 @@ export const CallRecordsTable = ({
     onViewRecord?.(id);
   }, [onViewRecord]);
 
+  const handleTranscribe = useCallback((e: React.MouseEvent, id: string, summary?: string) => {
+    e.stopPropagation();
+    onTranscribeRecord?.(id);
+    toast.info("Starting transcription...");
+  }, [onTranscribeRecord]);
+
   if (loading) {
     return <TableSkeleton />;
   }
@@ -612,6 +654,8 @@ export const CallRecordsTable = ({
               onView={handleViewRecord}
               onCopy={handleCopyTranscript}
               onDownload={handleDownloadAudio}
+              onTranscribe={handleTranscribe}
+              isTranscribing={isTranscribing}
             />
           ))}
         </TableBody>

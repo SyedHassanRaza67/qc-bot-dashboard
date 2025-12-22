@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Search, RefreshCw, CloudDownload, Upload, Phone, Zap, Settings, RotateCcw } from "lucide-react";
+import { Search, RefreshCw, CloudDownload, Upload, Phone, Settings, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DateRange } from "react-day-picker";
@@ -21,21 +21,32 @@ import { toast } from "sonner";
 const STORAGE_KEYS = {
   sourceFilter: 'dashboard-source-filter',
   statusFilter: 'dashboard-status-filter',
+  dateRangeManuallySet: 'dashboard-date-manually-set',
 };
 
 const Dashboard = () => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   
-  // Default to last 7 days to show more data
+  // Default to today unless user manually changed the filter
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(today.getDate() - 7);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
-    return { from: sevenDaysAgo, to: today };
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    return { from: todayStart, to: today };
   });
+  
+  const [dateManuallySet, setDateManuallySet] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.dateRangeManuallySet) === 'true';
+  });
+  
+  // Handle date range change - mark as manually set
+  const handleDateRangeChange = (range: DateRange | undefined) => {
+    setDateRange(range);
+    setDateManuallySet(true);
+    localStorage.setItem(STORAGE_KEYS.dateRangeManuallySet, 'true');
+  };
   
   const [currentPage, setCurrentPage] = useState(1);
   
@@ -194,10 +205,11 @@ const Dashboard = () => {
     setStatusFilter(filter);
   };
 
-  const handleTranscribeAll = async () => {
-    await transcribeNow(20);
+  // Manual transcription handler - passed to table
+  const handleTranscribeRecord = useCallback(async (recordId: string) => {
+    await transcribeNow(1);
     setTimeout(() => refetch(), 2000);
-  };
+  }, [transcribeNow, refetch]);
 
   const filteredRecords = records.filter(record =>
     searchQuery === "" || 
@@ -264,7 +276,7 @@ const Dashboard = () => {
             
             <DateRangePicker
               dateRange={dateRange}
-              onDateRangeChange={setDateRange}
+              onDateRangeChange={handleDateRangeChange}
             />
 
             <Button 
@@ -286,8 +298,16 @@ const Dashboard = () => {
                 setSearchQuery("");
                 setSourceFilter("all");
                 setStatusFilter("all");
+                setDateManuallySet(false);
                 localStorage.removeItem('dashboard-source-filter');
                 localStorage.removeItem('dashboard-status-filter');
+                localStorage.removeItem(STORAGE_KEYS.dateRangeManuallySet);
+                // Reset to today
+                const today = new Date();
+                today.setHours(23, 59, 59, 999);
+                const todayStart = new Date(today);
+                todayStart.setHours(0, 0, 0, 0);
+                setDateRange({ from: todayStart, to: today });
                 toast.success('Filters reset');
               }} 
               variant="outline" 
@@ -297,17 +317,6 @@ const Dashboard = () => {
               Reset
             </Button>
 
-            {pendingCount > 0 && (
-              <Button 
-                onClick={handleTranscribeAll}
-                variant="default"
-                className="rounded-xl gap-2 bg-amber-500 hover:bg-amber-600"
-                disabled={isTranscribing}
-              >
-                <Zap className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
-                Transcribe ({pendingCount})
-              </Button>
-            )}
           </div>
         </div>
 
@@ -353,6 +362,8 @@ const Dashboard = () => {
           totalPages={totalPages}
           totalCount={totalCount}
           onPageChange={setCurrentPage}
+          onTranscribeRecord={handleTranscribeRecord}
+          isTranscribing={isTranscribing}
         />
 
         <CallDetailDialog 
