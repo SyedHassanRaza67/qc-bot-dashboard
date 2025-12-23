@@ -92,8 +92,33 @@ async function tryFetchAudio(audioUrl: string): Promise<Response | null> {
 function getUrlVariations(originalUrl: string): string[] {
   const urls: string[] = [originalUrl];
 
+  const addVicidialVariants = (u: string) => {
+    try {
+      const parsed = new URL(u);
+      const pathLower = parsed.pathname.toLowerCase();
+
+      // Many VICIdial installs serve recordings under /vicidial/RECORDINGS/... instead of /RECORDINGS/...
+      if (!pathLower.startsWith("/vicidial/") && pathLower.includes("/recordings/")) {
+        const withVicidial = new URL(u);
+        withVicidial.pathname = `/vicidial${parsed.pathname.startsWith("/") ? parsed.pathname : `/${parsed.pathname}`}`;
+        urls.push(withVicidial.toString());
+      }
+
+      // And some serve them at root even if a URL includes /vicidial/
+      if (pathLower.startsWith("/vicidial/")) {
+        const withoutVicidial = new URL(u);
+        withoutVicidial.pathname = parsed.pathname.replace(/^\/vicidial/i, "");
+        if (!withoutVicidial.pathname.startsWith("/")) withoutVicidial.pathname = `/${withoutVicidial.pathname}`;
+        urls.push(withoutVicidial.toString());
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   // Case variants first
   addCaseVariants(urls, originalUrl);
+  addVicidialVariants(originalUrl);
 
   // Protocol swap (some VICIdial boxes serve recordings only on one of them)
   try {
@@ -144,9 +169,12 @@ function getUrlVariations(originalUrl: string): string[] {
     urls.push(originalUrl.replace(/\/recordings\/(MP3|mp3)\//, "/recordings/"));
   }
 
-  // Add case variants for all newly generated urls
+  // Add case + /vicidial variants for all newly generated urls
   const expanded = [...urls];
-  for (const u of expanded) addCaseVariants(urls, u);
+  for (const u of expanded) {
+    addCaseVariants(urls, u);
+    addVicidialVariants(u);
+  }
 
   return dedupe(urls);
 }
