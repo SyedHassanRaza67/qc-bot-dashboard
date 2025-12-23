@@ -30,6 +30,55 @@ function validateString(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
 
+// Generate URL variations to try (MP3/WAV, with/without MP3 folder, http/https)
+function getUrlVariations(originalUrl: string): string[] {
+  const urls: string[] = [originalUrl];
+  
+  // Try http if https
+  if (originalUrl.startsWith('https://')) {
+    urls.push(originalUrl.replace('https://', 'http://'));
+  }
+  
+  // Try MP3 folder variations
+  if (originalUrl.includes('/RECORDINGS/MP3/')) {
+    urls.push(originalUrl.replace('/RECORDINGS/MP3/', '/RECORDINGS/'));
+  } else if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/RECORDINGS/MP3/')) {
+    urls.push(originalUrl.replace('/RECORDINGS/', '/RECORDINGS/MP3/'));
+  }
+  
+  // Try file extension variations
+  const withMp3 = urls.filter(u => u.endsWith('.mp3')).map(u => u.replace('.mp3', '.wav'));
+  const withWav = urls.filter(u => u.endsWith('.wav')).map(u => u.replace('.wav', '.mp3'));
+  urls.push(...withMp3, ...withWav);
+  
+  // Dedupe
+  return [...new Set(urls)];
+}
+
+// Try fetching audio from a URL with timeout
+async function tryFetchAudio(url: string, timeoutMs: number = 15000): Promise<Response | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    const response = await fetch(url, { 
+      headers: { 'Accept': 'audio/*' },
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      console.log(`Audio fetch success: ${url}`);
+      return response;
+    }
+    console.log(`Audio fetch failed: ${url} - ${response.status}`);
+    return null;
+  } catch (e) {
+    console.log(`Audio fetch error: ${url} - ${e}`);
+    return null;
+  }
+}
+
 // Process a single record - returns success/fail
 async function processRecord(
   record: { id: string; recording_url: string | null; system_call_id: string },
@@ -45,17 +94,36 @@ async function processRecord(
     // Mark as processing
     await supabase.from('call_records').update({ summary: 'Transcribing...' }).eq('id', record.id);
 
-    // Fetch audio with timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    // Try multiple URL variations
+    const urlsToTry = getUrlVariations(record.recording_url);
+    console.log(`Trying ${urlsToTry.length} URL variations for ${record.system_call_id}`);
     
-    const audioResponse = await fetch(record.recording_url, { 
-      headers: { 'Accept': 'audio/*' },
-      signal: controller.signal 
-    });
-    clearTimeout(timeoutId);
+    let audioResponse: Response | null = null;
+    let successUrl = '';
     
-    if (!audioResponse.ok) throw new Error(`Audio fetch failed: ${audioResponse.status}`);
+    for (const url of urlsToTry) {
+      audioResponse = await tryFetchAudio(url);
+      if (audioResponse) {
+        successUrl = url;
+        break;
+      }
+    }
+    
+    if (!audioResponse) {
+      // Mark as audio not available so we don't retry endlessly
+      await supabase.from('call_records').update({ 
+        summary: 'Recording not available on server',
+        updated_at: new Date().toISOString()
+      }).eq('id', record.id);
+      console.log(`All URL variations failed for ${record.system_call_id}`);
+      return false;
+    }
+
+    // Update recording_url if we found a working one different from original
+    if (successUrl !== record.recording_url) {
+      await supabase.from('call_records').update({ recording_url: successUrl }).eq('id', record.id);
+      console.log(`Updated recording_url to working URL: ${successUrl}`);
+    }
 
     const audioBuffer = await audioResponse.arrayBuffer();
     const bytes = new Uint8Array(audioBuffer);
