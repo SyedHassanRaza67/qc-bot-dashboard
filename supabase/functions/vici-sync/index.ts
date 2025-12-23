@@ -188,8 +188,27 @@ serve(async (req) => {
 
               // Check if recording is .wav (needs conversion to mp3)
               const isWavFile = recordingUrl?.toLowerCase().endsWith('.wav') || false;
-              if (isWavFile) {
-                console.log(`Record ${recordingId} has .wav file - marking as processing`);
+              
+              // Validate recording URL exists with HEAD request
+              let urlExists = false;
+              if (recordingUrl) {
+                try {
+                  const headResponse = await fetch(recordingUrl, { 
+                    method: 'HEAD',
+                    headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' }
+                  });
+                  urlExists = headResponse.ok;
+                  console.log(`HEAD check for ${recordingId}: ${urlExists ? 'exists' : 'not found'} (${headResponse.status})`);
+                } catch (headErr) {
+                  console.log(`HEAD check failed for ${recordingId}: ${headErr}`);
+                  urlExists = false;
+                }
+              }
+
+              // Mark as processing if URL doesn't exist OR is .wav file
+              const needsProcessing = !urlExists || isWavFile;
+              if (needsProcessing) {
+                console.log(`Record ${recordingId} marked for processing - urlExists: ${urlExists}, isWav: ${isWavFile}`);
               }
 
               allRecords.push({
@@ -199,7 +218,7 @@ serve(async (req) => {
                 timestamp: toIso(startDateStr, queryDate),
                 duration: `${mins}:${secs.toString().padStart(2, '0')}`,
                 recording_url: recordingUrl,
-                is_processing: isWavFile, // Flag .wav files for retry
+                is_processing: needsProcessing, // Flag records with unavailable URLs for retry
                 user_id: user.id,
                 publisher_id: 'vicidial',
                 buyer_id: leadId || 'unknown',

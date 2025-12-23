@@ -36,6 +36,7 @@ interface CallRecord {
   recordingUrl?: string;
   uploadSource?: string;
   agentId?: string;
+  isProcessing?: boolean;
 }
 
 interface CallRecordsTableProps {
@@ -50,7 +51,16 @@ interface CallRecordsTableProps {
   transcribingRecordId?: string | null;
 }
 
-const getStatusBadge = (status: string, summary?: string) => {
+const getStatusBadge = (status: string, summary?: string, isProcessing?: boolean) => {
+  // Show "Processing Audio..." badge when recording is being processed
+  if (isProcessing) {
+    return (
+      <span className="status-badge bg-purple-500/20 text-purple-400 border-purple-500/30 animate-pulse">
+        Processing Audio...
+      </span>
+    );
+  }
+  
   // Show "Transcribing..." badge when actively being processed
   if (summary === 'Transcribing...') {
     return (
@@ -161,8 +171,9 @@ const TableRowMemo = memo(({
                               record.summary?.startsWith('Audio fetch failed') ||
                               record.summary?.includes('failed');
   
-  // Check if recording is known to be unavailable
-  const isRecordingUnavailable = record.summary === 'Recording not available on server' ||
+  // Check if recording is known to be unavailable OR is still processing
+  const isRecordingUnavailable = record.isProcessing ||
+                                  record.summary === 'Recording not available on server' ||
                                   record.summary?.includes('Recording not available') ||
                                   !record.recordingUrl;
   
@@ -232,7 +243,7 @@ const TableRowMemo = memo(({
       </div>
     </TableCell>
     <TableCell>
-      {getStatusBadge(record.status, record.summary)}
+      {getStatusBadge(record.status, record.summary, record.isProcessing)}
     </TableCell>
     <TableCell>{record.subDisposition}</TableCell>
     <TableCell className="text-center">
@@ -272,7 +283,7 @@ const TableRowMemo = memo(({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{isRecordingUnavailable ? "Recording Unavailable" : playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
+              <p>{record.isProcessing ? "Audio Processing..." : isRecordingUnavailable ? "Recording Unavailable" : playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
