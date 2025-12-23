@@ -161,6 +161,11 @@ const TableRowMemo = memo(({
                               record.summary?.startsWith('Audio fetch failed') ||
                               record.summary?.includes('failed');
   
+  // Check if recording is known to be unavailable
+  const isRecordingUnavailable = record.summary === 'Recording not available on server' ||
+                                  record.summary?.includes('Recording not available') ||
+                                  !record.recordingUrl;
+  
   const isThisRecordTranscribing = transcribingRecordId === record.id;
   
   return (
@@ -249,17 +254,25 @@ const TableRowMemo = memo(({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={(e) => onPlay(e, record.recordingUrl, record.id, record.uploadSource)}
+                disabled={isRecordingUnavailable}
+                onClick={(e) => {
+                  if (isRecordingUnavailable) {
+                    e.stopPropagation();
+                    toast.error("Recording not available on server");
+                    return;
+                  }
+                  onPlay(e, record.recordingUrl, record.id, record.uploadSource);
+                }}
               >
                 {playingId === record.id ? (
                   <Square className="h-4 w-4 text-destructive" />
                 ) : (
-                  <Play className="h-4 w-4" />
+                  <Play className={`h-4 w-4 ${isRecordingUnavailable ? 'opacity-50' : ''}`} />
                 )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>{playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
+              <p>{isRecordingUnavailable ? "Recording Unavailable" : playingId === record.id ? "Stop Audio" : "Play Audio"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
