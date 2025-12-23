@@ -115,37 +115,87 @@ serve(async (req) => {
 
     // Helper function to try fetching with URL variations
     async function tryFetchAudio(audioUrl: string): Promise<Response | null> {
-      const response = await fetch(audioUrl, {
-        headers: { 'Accept': 'audio/*' },
-      });
-      if (response.ok) return response;
-      return null;
+      try {
+        const response = await fetch(audioUrl, {
+          headers: { 'Accept': 'audio/*' },
+        });
+
+        if (response.ok) return response;
+
+        console.log('Fetch failed:', {
+          url: audioUrl,
+          status: response.status,
+          statusText: response.statusText,
+        });
+        return null;
+      } catch (err) {
+        console.log('Fetch threw error:', {
+          url: audioUrl,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      }
     }
 
     // Generate URL variations to try
     function getUrlVariations(originalUrl: string): string[] {
-      const urls = [originalUrl];
-      
-      // If it's a WAV in /RECORDINGS/, try MP3 version in /RECORDINGS/MP3/
-      if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/MP3/') && originalUrl.endsWith('.wav')) {
-        const mp3Url = originalUrl
-          .replace('/RECORDINGS/', '/RECORDINGS/MP3/')
-          .replace('.wav', '.mp3');
-        urls.push(mp3Url);
+      const urls: string[] = [originalUrl];
+
+      // Try switching protocol (some VICIdial boxes serve recordings only on one of them)
+      try {
+        const parsed = new URL(originalUrl);
+        if (parsed.protocol === 'http:') {
+          parsed.protocol = 'https:';
+          urls.push(parsed.toString());
+        } else if (parsed.protocol === 'https:') {
+          parsed.protocol = 'http:';
+          urls.push(parsed.toString());
+        }
+      } catch {
+        // ignore
       }
-      
-      // If it's a WAV anywhere, also try just changing extension
-      if (originalUrl.endsWith('.wav')) {
-        urls.push(originalUrl.replace('.wav', '.mp3'));
+
+      const lower = originalUrl.toLowerCase();
+
+      // WAV -> MP3 (existing behavior, but case-insensitive)
+      if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/MP3/') && lower.endsWith('.wav')) {
+        urls.push(
+          originalUrl
+            .replace('/RECORDINGS/', '/RECORDINGS/MP3/')
+            .replace(/\.wav$/i, '.mp3')
+        );
       }
-      
-      // If in /RECORDINGS/ but not /MP3/, try adding /MP3/
+      if (lower.endsWith('.wav')) {
+        urls.push(originalUrl.replace(/\.wav$/i, '.mp3'));
+      }
+
+      // MP3 -> WAV (common when MP3 file is missing but WAV exists)
+      if (originalUrl.includes('/RECORDINGS/MP3/') && lower.endsWith('.mp3')) {
+        urls.push(
+          originalUrl
+            .replace('/RECORDINGS/MP3/', '/RECORDINGS/')
+            .replace(/\.mp3$/i, '.wav')
+        );
+      }
+      if (originalUrl.includes('/MP3/') && lower.endsWith('.mp3')) {
+        urls.push(originalUrl.replace('/MP3/', '/'));
+        urls.push(originalUrl.replace('/MP3/', '/').replace(/\.mp3$/i, '.wav'));
+      }
+      if (lower.endsWith('.mp3')) {
+        urls.push(originalUrl.replace(/\.mp3$/i, '.wav'));
+      }
+
+      // Folder toggle (/RECORDINGS/ <-> /RECORDINGS/MP3/)
       if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/MP3/')) {
         urls.push(originalUrl.replace('/RECORDINGS/', '/RECORDINGS/MP3/'));
       }
-      
+      if (originalUrl.includes('/RECORDINGS/MP3/')) {
+        urls.push(originalUrl.replace('/RECORDINGS/MP3/', '/RECORDINGS/'));
+      }
+
       return [...new Set(urls)]; // Remove duplicates
     }
+
 
     const urlsToTry = getUrlVariations(url);
     console.log('URL variations to try:', urlsToTry);

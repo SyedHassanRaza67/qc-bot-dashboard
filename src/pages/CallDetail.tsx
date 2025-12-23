@@ -108,7 +108,10 @@ const CallDetail = () => {
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to proxy audio');
+          if (response.status === 404) {
+            throw new Error('Recording not available on server');
+          }
+          throw new Error(errorData.error || 'Failed to load audio');
         }
         
         const audioBlob = await response.blob();
