@@ -534,7 +534,11 @@ export const CallRecordsTable = ({
         
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to proxy audio');
+          // Show user-friendly message for missing files
+          if (response.status === 404) {
+            throw new Error('Recording not available on server');
+          }
+          throw new Error(errorData.error || 'Failed to load audio');
         }
         
         const audioBlob = await response.blob();
