@@ -37,6 +37,7 @@ export interface CallRecord {
   recordingUrl?: string;
   transcript: string;
   uploadSource: 'manual' | 'vicidial';
+  isProcessing?: boolean;
 }
 
 export type DateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month';
@@ -156,6 +157,7 @@ export const useCallRecords = (
         recordingUrl: record.recording_url || undefined,
         transcript: record.transcript,
         uploadSource: (record as any).upload_source || 'manual',
+        isProcessing: (record as any).is_processing || false,
       })) as CallRecord[];
 
       return {
