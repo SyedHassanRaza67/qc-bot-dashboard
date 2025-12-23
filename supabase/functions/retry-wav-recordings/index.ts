@@ -2,216 +2,303 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Generate multiple URL variations to try
-const getUrlVariations = (baseUrl: string, originalUrl: string, recordingId: string, leadId: string | null, timestamp: string | null): string[] => {
+type RetryBody = {
+  minAgeSeconds?: number;
+  limit?: number;
+};
+
+const normalizeBaseUrl = (serverUrl: string) => {
+  const trimmed = serverUrl.replace(/\/+$/, "");
+  return trimmed.split("/vicidial")[0];
+};
+
+// Generate multiple URL variations to try (prefer MP3 paths first)
+const getUrlVariations = (
+  baseUrl: string,
+  originalUrl: string,
+  leadId: string | null,
+  timestamp: string | null
+): string[] => {
   const variations: string[] = [];
-  
-  // If we have the original URL, add variations based on it
+
+  const add = (u?: string | null) => {
+    if (!u) return;
+    variations.push(u);
+  };
+
+  const toHttp = (u: string) => (u.startsWith("https://") ? u.replace("https://", "http://") : u);
+
   if (originalUrl) {
-    // Original URL as-is
-    variations.push(originalUrl);
-    
-    // Try HTTP instead of HTTPS
-    if (originalUrl.startsWith('https://')) {
-      variations.push(originalUrl.replace('https://', 'http://'));
+    const original = toHttp(originalUrl);
+
+    // Always try mp3 variants first
+    if (original.toLowerCase().endsWith(".wav")) {
+      const mp3 = original.replace(/\.wav$/i, ".mp3");
+      add(mp3);
+      add(mp3.replace("/RECORDINGS/", "/RECORDINGS/MP3/"));
     }
-    
-    // Try .mp3 instead of .wav
-    if (originalUrl.toLowerCase().endsWith('.wav')) {
-      const mp3Url = originalUrl.replace(/\.wav$/i, '.mp3');
-      variations.push(mp3Url);
-      // Also try with /MP3/ folder
-      variations.push(mp3Url.replace('/RECORDINGS/', '/RECORDINGS/MP3/'));
+
+    add(original);
+
+    // Toggle MP3 folder
+    if (original.includes("/RECORDINGS/MP3/")) {
+      add(original.replace("/RECORDINGS/MP3/", "/RECORDINGS/"));
+    } else if (original.includes("/RECORDINGS/")) {
+      add(original.replace("/RECORDINGS/", "/RECORDINGS/MP3/"));
     }
-    
-    // Try without /MP3/ folder if present
-    if (originalUrl.includes('/RECORDINGS/MP3/')) {
-      variations.push(originalUrl.replace('/RECORDINGS/MP3/', '/RECORDINGS/'));
+
+    // Toggle extensions
+    if (original.toLowerCase().endsWith(".mp3")) {
+      add(original.replace(/\.mp3$/i, ".wav"));
+    } else if (original.toLowerCase().endsWith(".wav")) {
+      add(original.replace(/\.wav$/i, ".mp3"));
     }
-    
-    // Try with /MP3/ folder if not present
-    if (originalUrl.includes('/RECORDINGS/') && !originalUrl.includes('/RECORDINGS/MP3/')) {
-      const filename = originalUrl.split('/RECORDINGS/')[1];
-      if (filename) {
-        variations.push(`${baseUrl}/RECORDINGS/MP3/${filename}`);
+
+    // Some installs use /vicidial prefix
+    if (original.includes("/RECORDINGS/")) {
+      const after = original.split("/RECORDINGS/")[1];
+      if (after) {
+        add(`${baseUrl}/vicidial/RECORDINGS/${after}`);
+        add(`${baseUrl}/vicidial/RECORDINGS/MP3/${after}`);
       }
     }
   }
-  
-  // Construct URLs from timestamp and leadId if available
+
+  // Construct from timestamp + leadId (common VICIdial naming)
   if (timestamp && leadId) {
-    const date = new Date(timestamp);
-    const formattedDate = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}-${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`;
-    
-    // Try different folder and extension combinations
-    variations.push(`${baseUrl}/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`);
-    variations.push(`${baseUrl}/RECORDINGS/${formattedDate}_${leadId}-all.mp3`);
-    variations.push(`${baseUrl}/RECORDINGS/${formattedDate}_${leadId}-all.wav`);
-    variations.push(`${baseUrl}/RECORDINGS/MP3/${formattedDate}_${leadId}.mp3`);
-    
-    // Try /vicidial/ path
-    variations.push(`${baseUrl}/vicidial/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`);
+    const d = new Date(timestamp);
+    const formattedDate = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}-${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}${String(d.getSeconds()).padStart(2, "0")}`;
+
+    add(`${baseUrl}/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`);
+    add(`${baseUrl}/RECORDINGS/${formattedDate}_${leadId}-all.mp3`);
+    add(`${baseUrl}/RECORDINGS/${formattedDate}_${leadId}-all.wav`);
+    add(`${baseUrl}/vicidial/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`);
   }
-  
-  // Dedupe and return
+
+  // Dedupe
   return [...new Set(variations)];
 };
 
-// Try to fetch a URL and return true if it exists
-const checkUrlExists = async (url: string): Promise<boolean> => {
+const checkUrlExists = async (url: string): Promise<{ ok: boolean; status?: number }> => {
+  // 1) HEAD (fast)
   try {
-    const response = await fetch(url, { 
-      method: 'HEAD',
-      headers: { 'User-Agent': 'AI-Audio-Analyzer/1.0' }
+    const head = await fetch(url, {
+      method: "HEAD",
+      headers: { "User-Agent": "AI-Audio-Analyzer/1.0" },
     });
-    return response.ok;
+    if (head.ok) return { ok: true, status: head.status };
+
+    // Some servers reject HEAD; fall back to a 1-byte range GET
+    if (head.status !== 403 && head.status !== 405) {
+      return { ok: false, status: head.status };
+    }
   } catch {
-    return false;
+    // fall through to GET
+  }
+
+  // 2) GET with Range bytes=0-0
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "AI-Audio-Analyzer/1.0",
+        Range: "bytes=0-0",
+        Accept: "audio/*",
+      },
+    });
+
+    clearTimeout(timeout);
+    return { ok: res.ok, status: res.status };
+  } catch {
+    return { ok: false };
   }
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get records that are still processing
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const body: RetryBody = await req.json().catch(() => ({}));
+    const minAgeSeconds = Math.max(15, Math.min(10 * 60, body.minAgeSeconds ?? 60));
+    const limit = Math.max(1, Math.min(200, body.limit ?? 100));
+
+    // Fetch VICIdial integration for baseUrl
+    const { data: integration, error: integrationError } = await supabase
+      .from("dialer_integrations")
+      .select("server_url")
+      .eq("user_id", user.id)
+      .eq("dialer_type", "vicidial")
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (integrationError || !integration?.server_url) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No active VICIdial integration" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+      );
+    }
+
+    const baseUrl = normalizeBaseUrl(integration.server_url);
+    const threshold = new Date(Date.now() - minAgeSeconds * 1000).toISOString();
+
     const { data: processingRecords, error: fetchError } = await supabase
-      .from('call_records')
-      .select('id, system_call_id, recording_url, user_id, lead_id, timestamp')
-      .eq('is_processing', true)
-      .limit(50);
+      .from("call_records")
+      .select("id, system_call_id, recording_url, lead_id, timestamp, summary, updated_at")
+      .eq("user_id", user.id)
+      .eq("is_processing", true)
+      .lte("updated_at", threshold)
+      .order("updated_at", { ascending: true })
+      .limit(limit);
 
     if (fetchError) {
-      console.error('Error fetching processing records:', fetchError);
+      console.error("[retry-wav-recordings] fetchError:", fetchError);
       throw fetchError;
     }
 
     if (!processingRecords || processingRecords.length === 0) {
-      console.log('No processing records found');
       return new Response(
-        JSON.stringify({ success: true, message: 'No records to retry', updated: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: true, message: "No records ready to retry", updated: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Found ${processingRecords.length} records to retry`);
+    console.log(
+      `[retry-wav-recordings] Retrying ${processingRecords.length} records (minAgeSeconds=${minAgeSeconds})`
+    );
 
-    // Group records by user to fetch their integration settings
-    const userIds = [...new Set(processingRecords.map(r => r.user_id).filter(Boolean))];
-    
-    const { data: integrations } = await supabase
-      .from('dialer_integrations')
-      .select('*')
-      .in('user_id', userIds)
-      .eq('dialer_type', 'vicidial')
-      .eq('is_active', true);
-
-    const integrationMap = new Map(integrations?.map(i => [i.user_id, i]) || []);
-    
     let updatedCount = 0;
-    let failedCount = 0;
+    let stillProcessing = 0;
 
     for (const record of processingRecords) {
-      const integration = integrationMap.get(record.user_id);
-      if (!integration) {
-        console.log(`No integration found for user ${record.user_id}`);
-        failedCount++;
-        continue;
-      }
-
-      const { server_url } = integration;
-      const baseUrl = server_url.replace(/\/+$/, '').split('/vicidial')[0];
-      
-      // Get URL variations to try
       const urlVariations = getUrlVariations(
-        baseUrl, 
-        record.recording_url || '', 
-        record.system_call_id?.replace('VICI-', '') || '',
+        baseUrl,
+        record.recording_url || "",
         record.lead_id,
         record.timestamp
       );
 
-      console.log(`Trying ${urlVariations.length} URL variations for record ${record.id}`);
+      const mp3First = [
+        ...urlVariations.filter((u) => u.toLowerCase().endsWith(".mp3")),
+        ...urlVariations.filter((u) => !u.toLowerCase().endsWith(".mp3")),
+      ];
 
-      let foundUrl: string | null = null;
+      let foundMp3: string | null = null;
 
-      // Try each URL variation
-      for (const url of urlVariations) {
-        console.log(`Checking: ${url}`);
-        const exists = await checkUrlExists(url);
-        if (exists) {
-          foundUrl = url;
-          console.log(`Found working URL: ${url}`);
+      for (const url of mp3First) {
+        const { ok, status } = await checkUrlExists(url);
+        if (!ok) continue;
+
+        if (url.toLowerCase().endsWith(".mp3")) {
+          foundMp3 = url.startsWith("https://") ? url.replace("https://", "http://") : url;
+          console.log(`[retry-wav-recordings] ${record.system_call_id}: mp3 ready (${status}) -> ${foundMp3}`);
           break;
         }
       }
 
-      if (foundUrl) {
-        // Normalize to HTTP
-        if (foundUrl.startsWith('https://')) {
-          foundUrl = foundUrl.replace('https://', 'http://');
-        }
-
-        // Update the record with the working URL
+      if (foundMp3) {
         const { error: updateError } = await supabase
-          .from('call_records')
+          .from("call_records")
           .update({
-            recording_url: foundUrl,
+            recording_url: foundMp3,
             is_processing: false,
-            updated_at: new Date().toISOString()
+            summary: "Pending AI analysis",
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', record.id);
+          .eq("id", record.id)
+          .eq("user_id", user.id);
 
-        if (!updateError) {
-          updatedCount++;
-          console.log(`Updated record ${record.id} with working URL: ${foundUrl}`);
-          
-          // Trigger transcription for this record
-          fetch(`${supabaseUrl}/functions/v1/transcribe-background`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ record_id: record.id }),
-          }).catch(err => console.error(`Failed to trigger transcription for ${record.id}:`, err));
+        if (updateError) {
+          console.error(`[retry-wav-recordings] Update failed for ${record.id}:`, updateError);
+          stillProcessing++;
         } else {
-          console.error(`Failed to update record ${record.id}:`, updateError);
-          failedCount++;
+          updatedCount++;
         }
-      } else {
-        console.log(`No working URL found for record ${record.id} - still processing`);
-        failedCount++;
+
+        continue;
       }
+
+      // Not ready yet — bump updated_at so we don't hammer more than once per minute.
+      const stillUpdate: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (record.summary?.includes("Recording not available")) {
+        stillUpdate.summary = "Processing audio...";
+      }
+
+      await supabase
+        .from("call_records")
+        .update(stillUpdate)
+        .eq("id", record.id)
+        .eq("user_id", user.id);
+
+      stillProcessing++;
     }
 
-    console.log(`Retry complete: ${updatedCount} updated, ${failedCount} still processing`);
+    // Kick off analysis for newly-ready recordings (in background)
+    if (updatedCount > 0) {
+      const task = fetch(`${supabaseUrl}/functions/v1/transcribe-background`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ limit: updatedCount, concurrency: 5 }),
+      }).catch((err) => console.error("[retry-wav-recordings] Failed to trigger transcription:", err));
+
+      // @ts-ignore - EdgeRuntime exists in the edge runtime
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(task);
+      }
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Retried ${processingRecords.length} records`,
+        retried: processingRecords.length,
         updated: updatedCount,
-        stillProcessing: failedCount
+        stillProcessing,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error) {
-    console.error('Retry-wav-recordings error:', error);
+    console.error("[retry-wav-recordings] error:", error);
     return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });

@@ -55,34 +55,34 @@ const getStatusBadge = (status: string, summary?: string, isProcessing?: boolean
   // Show "Processing Audio..." badge when recording is being processed
   if (isProcessing) {
     return (
-      <span className="status-badge bg-purple-500/20 text-purple-400 border-purple-500/30 animate-pulse">
+      <span className="status-badge bg-info/10 text-info border border-info/20 animate-pulse">
         Processing Audio...
       </span>
     );
   }
-  
+
   // Show "Transcribing..." badge when actively being processed
   if (summary === 'Transcribing...') {
     return (
-      <span className="status-badge bg-blue-500/20 text-blue-400 border-blue-500/30 animate-pulse">
+      <span className="status-badge bg-info/10 text-info border border-info/20 animate-pulse">
         Transcribing...
       </span>
     );
   }
-  
+
   // Show "Pending" badge for records awaiting transcription
   if (summary === 'Pending AI analysis') {
     return (
-      <span className="status-badge bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+      <span className="status-badge status-pending">
         Pending
       </span>
     );
   }
-  
+
   // Show error badge for failed transcriptions
   if (summary?.startsWith('AI error:') || summary?.startsWith('Audio fetch failed') || summary?.includes('failed')) {
     return (
-      <span className="status-badge bg-red-500/20 text-red-400 border-red-500/30">
+      <span className="status-badge bg-destructive/10 text-destructive border border-destructive/20">
         Error
       </span>
     );
