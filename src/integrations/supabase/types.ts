@@ -47,6 +47,7 @@ export type Database = {
           customer_response: string | null
           duration: string
           id: string
+          is_processing: boolean | null
           lead_id: string | null
           publisher: string
           publisher_id: string
@@ -73,6 +74,7 @@ export type Database = {
           customer_response?: string | null
           duration: string
           id?: string
+          is_processing?: boolean | null
           lead_id?: string | null
           publisher: string
           publisher_id: string
@@ -99,6 +101,7 @@ export type Database = {
           customer_response?: string | null
           duration?: string
           id?: string
+          is_processing?: boolean | null
           lead_id?: string | null
           publisher?: string
           publisher_id?: string

@@ -186,6 +186,12 @@ serve(async (req) => {
                 console.log(`Normalized to HTTP: ${recordingUrl}`);
               }
 
+              // Check if recording is .wav (needs conversion to mp3)
+              const isWavFile = recordingUrl?.toLowerCase().endsWith('.wav') || false;
+              if (isWavFile) {
+                console.log(`Record ${recordingId} has .wav file - marking as processing`);
+              }
+
               allRecords.push({
                 system_call_id: `VICI-${recordingId}`,
                 caller_id: leadId || 'unknown',
@@ -193,6 +199,7 @@ serve(async (req) => {
                 timestamp: toIso(startDateStr, queryDate),
                 duration: `${mins}:${secs.toString().padStart(2, '0')}`,
                 recording_url: recordingUrl,
+                is_processing: isWavFile, // Flag .wav files for retry
                 user_id: user.id,
                 publisher_id: 'vicidial',
                 buyer_id: leadId || 'unknown',
@@ -277,6 +284,18 @@ serve(async (req) => {
           },
           body: JSON.stringify({ limit: insertedCount, concurrency: 5 }),
         }).catch(err => console.error('Background transcription trigger failed:', err));
+
+        // Schedule retry for .wav files after 3 minutes
+        const wavRecordsCount = newRecords.filter(r => r.is_processing).length;
+        if (wavRecordsCount > 0) {
+          console.log(`Scheduling retry for ${wavRecordsCount} .wav files in 3 minutes...`);
+          setTimeout(() => {
+            fetch(`${supabaseUrl}/functions/v1/retry-wav-recordings`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            }).catch(err => console.error('Retry-wav-recordings trigger failed:', err));
+          }, 3 * 60 * 1000); // 3 minutes
+        }
       }
 
       return new Response(
