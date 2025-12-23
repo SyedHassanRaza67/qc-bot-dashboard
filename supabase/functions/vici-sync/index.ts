@@ -304,17 +304,9 @@ serve(async (req) => {
           body: JSON.stringify({ limit: insertedCount, concurrency: 5 }),
         }).catch(err => console.error('Background transcription trigger failed:', err));
 
-        // Schedule retry for .wav files after 3 minutes
-        const wavRecordsCount = newRecords.filter(r => r.is_processing).length;
-        if (wavRecordsCount > 0) {
-          console.log(`Scheduling retry for ${wavRecordsCount} .wav files in 3 minutes...`);
-          setTimeout(() => {
-            fetch(`${supabaseUrl}/functions/v1/retry-wav-recordings`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-            }).catch(err => console.error('Retry-wav-recordings trigger failed:', err));
-          }, 3 * 60 * 1000); // 3 minutes
-        }
+        // Note: audio conversion can take 1–3 minutes on VICIdial.
+        // We retry availability from the Dashboard (every minute) and then kick off transcription.
+
       }
 
       return new Response(

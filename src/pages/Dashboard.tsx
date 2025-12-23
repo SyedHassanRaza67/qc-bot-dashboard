@@ -106,18 +106,50 @@ const Dashboard = () => {
   const totalCount = paginatedData?.totalCount || 0;
   const totalPages = paginatedData?.totalPages || 1;
 
-  // Count pending records and auto-trigger transcription
+  const processingCount = records.filter(r => r.isProcessing).length;
+
+  // Count pending records and auto-trigger transcription (skip records still processing audio)
   useEffect(() => {
-    const pending = records.filter(r => r.summary === 'Pending AI analysis');
+    const pending = records.filter(r => r.summary === 'Pending AI analysis' && !r.isProcessing);
     const transcribing = records.filter(r => r.summary === 'Transcribing...');
-    
+
     setPendingCount(pending.length + transcribing.length);
-    
+
     // Auto-trigger transcription when pending records exist (debounced)
     if (pending.length > 0 && !isTranscribing) {
       triggerTranscription(pending.length);
     }
   }, [records, isTranscribing, triggerTranscription]);
+
+  // Auto-retry VICIdial recordings that are still converting (checks every minute)
+  useEffect(() => {
+    if (processingCount === 0) return;
+
+    let cancelled = false;
+
+    const tick = async () => {
+      const { data, error } = await supabase.functions.invoke('retry-wav-recordings', {
+        body: { minAgeSeconds: 60, limit: 200 },
+      });
+
+      if (error) {
+        console.error('[AudioRetry] retry-wav-recordings error:', error);
+        return;
+      }
+
+      if (!cancelled && (data?.updated ?? 0) > 0) {
+        refetch();
+      }
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [processingCount, refetch]);
 
   // Real-time subscription - triggers transcription on new inserts
   useEffect(() => {
@@ -138,10 +170,10 @@ const Dashboard = () => {
           // On INSERT, trigger auto-transcription for the new record
           if (payload.eventType === 'INSERT') {
             const newRecord = payload.new as any;
-            if (newRecord?.summary === 'Pending AI analysis') {
+            if (newRecord?.summary === 'Pending AI analysis' && !newRecord?.is_processing) {
               triggerTranscription(1); // Will be debounced
             }
-            
+
             if (isLive) {
               toast.success('New call record received!', {
                 description: `Call ID: ${newRecord.system_call_id}`,

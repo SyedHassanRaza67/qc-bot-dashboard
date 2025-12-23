@@ -290,11 +290,12 @@ serve(async (req) => {
       }
       pendingRecords = data ? [data] : [];
     } else {
-      // Batch mode: Find pending records for this user
+      // Batch mode: Find pending records for this user (skip ones still converting)
       const { data, error: fetchError } = await supabase
         .from('call_records')
         .select('id, recording_url, system_call_id')
         .eq('user_id', userId)
+        .neq('is_processing', true)
         .or('summary.eq.Pending AI analysis,summary.ilike.Transcription failed%')
         .order('created_at', { ascending: true })
         .limit(limit);
