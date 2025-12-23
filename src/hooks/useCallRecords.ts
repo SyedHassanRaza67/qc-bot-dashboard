@@ -1,19 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { DateRange } from "react-day-picker";
 
-// UTC-aware date functions to ensure consistent filtering with database timestamps
-const getUTCStartOfDay = (date: Date): Date => {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
+// Get start of day in LOCAL timezone, then convert to ISO string for database query
+// This ensures "today" means today in the user's local timezone
+const getLocalStartOfDay = (date: Date): string => {
+  const localStart = startOfDay(date);
+  return localStart.toISOString();
 };
 
-const getUTCEndOfDay = (date: Date): Date => {
-  const d = new Date(date);
-  d.setUTCHours(23, 59, 59, 999);
-  return d;
+// Get end of day in LOCAL timezone, then convert to ISO string for database query
+const getLocalEndOfDay = (date: Date): string => {
+  const localEnd = endOfDay(date);
+  return localEnd.toISOString();
 };
 
 export interface CallRecord {
@@ -71,16 +71,16 @@ export const useCallRecords = (
         .select('*', { count: 'exact', head: true })
         .neq('duration', '0:00');
 
-      // Apply filters for count - use UTC boundaries for consistent filtering
+      // Apply filters for count - use LOCAL timezone boundaries
       if (dateRange?.from) {
-        const utcStart = getUTCStartOfDay(dateRange.from);
-        console.log('Date filter - From (UTC):', utcStart.toISOString());
-        countQuery = countQuery.gte('timestamp', utcStart.toISOString());
+        const localStart = getLocalStartOfDay(dateRange.from);
+        console.log('Date filter - From (local):', localStart);
+        countQuery = countQuery.gte('timestamp', localStart);
       }
       if (dateRange?.to) {
-        const utcEnd = getUTCEndOfDay(dateRange.to);
-        console.log('Date filter - To (UTC):', utcEnd.toISOString());
-        countQuery = countQuery.lte('timestamp', utcEnd.toISOString());
+        const localEnd = getLocalEndOfDay(dateRange.to);
+        console.log('Date filter - To (local):', localEnd);
+        countQuery = countQuery.lte('timestamp', localEnd);
       }
       if (statusFilter && statusFilter !== 'all') {
         countQuery = countQuery.eq('status', statusFilter);
@@ -110,12 +110,12 @@ export const useCallRecords = (
         .order('timestamp', { ascending: false })
         .range(from, to);
 
-      // Apply date range filter - use UTC boundaries
+      // Apply date range filter - use LOCAL timezone boundaries
       if (dateRange?.from) {
-        query = query.gte('timestamp', getUTCStartOfDay(dateRange.from).toISOString());
+        query = query.gte('timestamp', getLocalStartOfDay(dateRange.from));
       }
       if (dateRange?.to) {
-        query = query.lte('timestamp', getUTCEndOfDay(dateRange.to).toISOString());
+        query = query.lte('timestamp', getLocalEndOfDay(dateRange.to));
       }
 
       // Apply status filter
@@ -239,11 +239,11 @@ export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
       const allRecords = data || [];
       const now = new Date();
 
-      // Calculate date ranges for current and previous periods - use UTC
+      // Calculate date ranges for current and previous periods - use LOCAL timezone
       const getDateRanges = () => {
         if (dateRange?.from) {
-          const currentStart = getUTCStartOfDay(dateRange.from);
-          const currentEnd = dateRange.to ? getUTCEndOfDay(dateRange.to) : getUTCEndOfDay(now);
+          const currentStart = startOfDay(dateRange.from);
+          const currentEnd = dateRange.to ? endOfDay(dateRange.to) : endOfDay(now);
           const rangeDays = Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24));
           const prevStart = subDays(currentStart, rangeDays);
           const prevEnd = currentStart;
@@ -258,11 +258,11 @@ export const useCallStats = (dateRange?: DateRange, sourceFilter?: string) => {
 
       const { currentStart, currentEnd, prevStart, prevEnd } = getDateRanges();
 
-      // Filter records by period
+      // Filter records by period (comparing against local dates)
       const currentRecords = allRecords.filter(r => {
         const recordDate = new Date(r.timestamp);
         if (currentEnd) {
-          return recordDate >= currentStart && recordDate < currentEnd;
+          return recordDate >= currentStart && recordDate <= currentEnd;
         }
         return recordDate >= currentStart;
       });

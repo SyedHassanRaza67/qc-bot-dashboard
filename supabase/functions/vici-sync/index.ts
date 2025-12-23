@@ -146,28 +146,44 @@ serve(async (req) => {
               const mins = Math.floor(durationSecs / 60);
               const secs = durationSecs % 60;
 
-              // Build recording URL if not provided but we have the filename or can construct it
-              let recordingUrl = location || null;
+              // Build recording URL - prioritize `location` from API, then try multiple patterns
+              let recordingUrl: string | null = null;
               
-              // Normalize existing URL: convert /RECORDINGS/*.wav to /RECORDINGS/MP3/*.mp3
-              if (recordingUrl && recordingUrl.includes('/RECORDINGS/') && !recordingUrl.includes('/MP3/')) {
-                recordingUrl = recordingUrl
-                  .replace('/RECORDINGS/', '/RECORDINGS/MP3/')
-                  .replace('.wav', '.mp3');
-                console.log('Normalized recording URL:', recordingUrl);
+              // 1. If location is provided and looks like a valid URL/path, use it
+              if (location && (location.startsWith('http') || location.startsWith('/'))) {
+                recordingUrl = location.startsWith('http') ? location : `${baseUrl}${location}`;
+                console.log(`Using location from API: ${recordingUrl}`);
               }
               
+              // 2. If location is a filename (not a path), construct URL from it
+              if (!recordingUrl && location && !location.includes('/') && location.length > 0) {
+                // location might be just a filename like "20231222-153000_123456-all"
+                const ext = location.endsWith('.mp3') || location.endsWith('.wav') ? '' : '.mp3';
+                recordingUrl = `${baseUrl}/RECORDINGS/MP3/${location}${ext}`;
+                console.log(`Built URL from location filename: ${recordingUrl}`);
+              }
+              
+              // 3. Try using the provided filename
               if (!recordingUrl && filename) {
-                // Try to construct URL from filename - common VICIdial pattern
-                recordingUrl = `${baseUrl}/RECORDINGS/MP3/${filename}.mp3`;
-              } else if (!recordingUrl && startDateStr && leadId) {
-                // Try to construct from timestamp and lead_id - common VICIdial naming pattern
-                // Format: YYYYMMDD-HHMMSS_LEADID-all.mp3
+                const ext = filename.endsWith('.mp3') || filename.endsWith('.wav') ? '' : '.mp3';
+                recordingUrl = `${baseUrl}/RECORDINGS/MP3/${filename}${ext}`;
+                console.log(`Built URL from filename: ${recordingUrl}`);
+              }
+              
+              // 4. Construct from timestamp and lead_id as last resort
+              if (!recordingUrl && startDateStr && leadId) {
                 const dateMatch = startDateStr.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
                 if (dateMatch) {
                   const formattedDate = `${dateMatch[1]}${dateMatch[2]}${dateMatch[3]}-${dateMatch[4]}${dateMatch[5]}${dateMatch[6]}`;
                   recordingUrl = `${baseUrl}/RECORDINGS/MP3/${formattedDate}_${leadId}-all.mp3`;
+                  console.log(`Constructed URL from timestamp/leadId: ${recordingUrl}`);
                 }
+              }
+              
+              // 5. Normalize: ensure URL uses HTTP (VICIdial servers often have expired SSL certs)
+              if (recordingUrl && recordingUrl.startsWith('https://')) {
+                recordingUrl = recordingUrl.replace('https://', 'http://');
+                console.log(`Normalized to HTTP: ${recordingUrl}`);
               }
 
               allRecords.push({
