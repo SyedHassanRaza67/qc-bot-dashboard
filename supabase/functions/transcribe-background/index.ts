@@ -83,7 +83,7 @@ async function tryFetchAudio(url: string, timeoutMs: number = 15000): Promise<Re
 async function processRecord(
   record: { id: string; recording_url: string | null; system_call_id: string },
   supabase: any,
-  GEMINI_API_KEY: string
+  LOVABLE_API_KEY: string
 ): Promise<boolean> {
   try {
     if (!record.recording_url) {
@@ -135,28 +135,38 @@ async function processRecord(
     }
     const base64Audio = btoa(binary);
 
-    // Call Gemini API
-    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    // Call Lovable AI
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: 'Transcribe and analyze this call. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}' },
-            { inline_data: { mime_type: 'audio/mpeg', data: base64Audio } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1 }
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: 'Transcribe and analyze this call. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}'
+          },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Transcribe and analyze:' },
+              { type: 'input_audio', input_audio: { data: base64Audio, format: 'mp3' } }
+            ]
+          }
+        ],
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text().catch(() => '');
-      throw new Error(`Gemini API failed: ${aiResponse.status} - ${errorText.substring(0, 100)}`);
+      throw new Error(`AI failed: ${aiResponse.status} - ${errorText.substring(0, 100)}`);
     }
 
     const data = await aiResponse.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const content = data.choices?.[0]?.message?.content || '';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     
     if (jsonMatch) {
@@ -196,8 +206,10 @@ async function processRecord(
     let errorSummary = 'Transcription failed';
     const errMsg = err instanceof Error ? err.message : String(err);
     
-    if (errMsg.includes('429')) {
-      errorSummary = 'Transcription failed: API rate limited (429)';
+    if (errMsg.includes('402')) {
+      errorSummary = 'Transcription failed: AI credits exhausted (402)';
+    } else if (errMsg.includes('429')) {
+      errorSummary = 'Transcription failed: AI rate limited (429)';
     } else if (errMsg.includes('Audio fetch failed')) {
       errorSummary = `Transcription failed: ${errMsg}`;
     } else if (errMsg.includes('aborted') || errMsg.includes('timeout')) {
@@ -219,11 +231,11 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-    if (!GEMINI_API_KEY) {
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Gemini API key not configured' }),
+        JSON.stringify({ success: false, error: 'Lovable API key not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -317,7 +329,7 @@ serve(async (req) => {
       console.log(`Processing batch ${Math.floor(i / concurrency) + 1}: ${batch.length} records`);
       
       const results = await Promise.all(
-        batch.map(record => processRecord(record, supabase, GEMINI_API_KEY))
+        batch.map(record => processRecord(record, supabase, LOVABLE_API_KEY))
       );
       
       results.forEach(success => {

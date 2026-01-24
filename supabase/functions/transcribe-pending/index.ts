@@ -41,11 +41,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
-    if (!GEMINI_API_KEY) {
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Gemini API key not configured' }),
+        JSON.stringify({ success: false, error: 'Lovable API key not configured' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -138,25 +138,35 @@ serve(async (req) => {
         }
         const base64Audio = btoa(binary);
 
-        // Call Gemini API
-        const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        // Call Lovable AI
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: 'Transcribe and analyze this call. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}' },
-                { inline_data: { mime_type: 'audio/mpeg', data: base64Audio } }
-              ]
-            }],
-            generationConfig: { temperature: 0.1 }
+            model: 'google/gemini-2.5-flash',
+            messages: [
+              {
+                role: 'system',
+                content: 'Transcribe and analyze this call. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}'
+              },
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Transcribe and analyze:' },
+                  { type: 'input_audio', input_audio: { data: base64Audio, format: 'mp3' } }
+                ]
+              }
+            ],
           }),
         });
 
-        if (!aiResponse.ok) throw new Error(`Gemini API failed: ${aiResponse.status}`);
+        if (!aiResponse.ok) throw new Error(`AI failed: ${aiResponse.status}`);
 
         const data = await aiResponse.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const content = data.choices?.[0]?.message?.content || '';
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         
         if (jsonMatch) {
