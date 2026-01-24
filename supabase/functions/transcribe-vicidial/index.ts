@@ -41,9 +41,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     
-    if (!LOVABLE_API_KEY) throw new Error('LOVABLE_API_KEY not configured');
+    if (!GEMINI_API_KEY) throw new Error('Gemini API key not configured');
 
     // ========== AUTHENTICATION CHECK ==========
     const authHeader = req.headers.get('Authorization');
@@ -117,37 +117,33 @@ serve(async (req) => {
     }
     const base64Audio = btoa(binary);
 
-    // Call AI
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Gemini API
+    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: 'Transcribe and analyze. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}' },
-          { role: 'user', content: [{ type: 'text', text: 'Transcribe:' }, { type: 'image_url', image_url: { url: `data:audio/mpeg;base64,${base64Audio}` } }] }
-        ],
+        contents: [{
+          parts: [
+            { text: 'Transcribe and analyze this audio. Return JSON: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "sub_disposition":"...", "summary":"...", "reason":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}' },
+            { inline_data: { mime_type: 'audio/mpeg', data: base64Audio } }
+          ]
+        }],
+        generationConfig: { temperature: 0.1 }
       }),
     });
 
     if (!aiResponse.ok) {
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'AI credits exhausted. Please add credits to your Lovable workspace at Settings → Workspace → Usage.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Please wait a moment and try again.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      throw new Error(`AI failed: ${aiResponse.status}`);
+      throw new Error(`Gemini API failed: ${aiResponse.status}`);
     }
 
     const data = await aiResponse.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     
     // Default safe values
