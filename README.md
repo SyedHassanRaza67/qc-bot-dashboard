@@ -1,73 +1,78 @@
-# Welcome to your Lovable project
+# Audio Analyzer AI
 
-## Project info
+AI-powered call quality control dashboard for tracking, managing, and analyzing call center leads.
 
-**URL**: https://lovable.dev/projects/52b89868-9965-4b6b-b279-b799d3279d62
+## Features
 
-## How can I edit this code?
+- **Call Recording Analysis**: Upload audio files for AI-powered transcription and analysis
+- **VICIdial Integration**: Sync call records directly from VICIdial dialer systems
+- **Real-time Dashboard**: Monitor call statistics, dispositions, and agent performance
+- **AI Transcription**: Automatic transcription using Google Gemini 2.0 Flash
+- **Quality Control**: Agent and customer response ratings with detailed analytics
 
-There are several ways of editing your application.
+## Technology Stack
 
-**Use Lovable**
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- **Backend**: Supabase (PostgreSQL, Edge Functions, Auth, Storage)
+- **AI**: Google Gemini 2.0 Flash API for audio transcription and analysis
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/52b89868-9965-4b6b-b279-b799d3279d62) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ and npm
+- Supabase account (for database and backend)
+- Google Gemini API key
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```bash
+# Clone the repository
+git clone <your-repo-url>
 
-Follow these steps:
+# Navigate to project directory
+cd audio-analyzer-ai
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Install dependencies
+npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Environment Variables
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+The following environment variables are required:
 
-**Use GitHub Codespaces**
+- `VITE_SUPABASE_URL` - Supabase project URL
+- `VITE_SUPABASE_PUBLISHABLE_KEY` - Supabase anon/public key
+- `GEMINI_API_KEY` - Google Gemini API key (set in Supabase secrets)
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Project Structure
 
-## What technologies are used for this project?
+```
+├── src/
+│   ├── components/     # React components
+│   ├── hooks/          # Custom React hooks
+│   ├── pages/          # Page components
+│   ├── integrations/   # Supabase client and types
+│   └── lib/            # Utility functions
+├── supabase/
+│   ├── functions/      # Edge functions
+│   └── migrations/     # Database migrations
+└── public/             # Static assets
+```
 
-This project is built with:
+## Edge Functions
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- `transcribe-audio` - Manual audio upload transcription
+- `transcribe-vicidial` - Single VICIdial record transcription
+- `transcribe-background` - Batch background transcription
+- `transcribe-pending` - Process pending transcription queue
+- `vici-sync` - VICIdial API synchronization
+- `get-signed-url` - Generate signed URLs for audio playback
+- `proxy-audio` - Audio file proxy for CORS handling
 
-## How can I deploy this project?
+## License
 
-Simply open [Lovable](https://lovable.dev/projects/52b89868-9965-4b6b-b279-b799d3279d62) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+MIT License
