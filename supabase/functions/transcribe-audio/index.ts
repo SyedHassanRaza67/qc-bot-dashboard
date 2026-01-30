@@ -78,15 +78,16 @@ serve(async (req) => {
 
     if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
-    // Call AI for transcription
+    // Call AI for transcription with increased token limit
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
+        max_tokens: 8192,
         messages: [
-          { role: 'system', content: 'Transcribe and analyze. Return JSON only: {"transcript":"...", "status":"sale|callback|not-interested|disqualified|pending", "agentName":"...", "subDisposition":"...", "reason":"...", "summary":"...", "campaignName":"...", "publisher":"...", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}' },
-          { role: 'user', content: [{ type: 'text', text: 'Analyze:' }, { type: 'image_url', image_url: { url: `data:audio/webm;base64,${audio}` } }] }
+          { role: 'system', content: 'Transcribe and analyze this audio call. Return ONLY valid JSON with these exact fields: {"transcript":"full transcription text", "status":"sale|callback|not-interested|disqualified|pending", "agentName":"agent name if mentioned", "subDisposition":"brief disposition", "reason":"brief reason max 50 words", "summary":"brief summary max 50 words", "campaignName":"campaign topic", "publisher":"publisher name if mentioned", "agent_response":"excellent|good|average|bad|very-bad", "customer_response":"excellent|good|average|bad|very-bad"}. Keep summary and reason SHORT to avoid truncation.' },
+          { role: 'user', content: [{ type: 'text', text: 'Transcribe and analyze this audio:' }, { type: 'input_audio', input_audio: { data: audio, format: 'mp3' } }] }
         ],
       }),
     });
@@ -108,7 +109,15 @@ serve(async (req) => {
     if (aiResponse.ok) {
       const data = await aiResponse.json();
       const content = data.choices?.[0]?.message?.content || '';
-      const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      // Remove markdown code blocks if present
+      let jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      // Try to extract JSON object even if truncated
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
       
       try {
         const parsed = JSON.parse(jsonStr);
@@ -129,7 +138,39 @@ serve(async (req) => {
         
         console.log('AI response validated successfully');
       } catch (e) {
-        console.log('Parse error, using defaults:', e);
+        console.log('Parse error, attempting partial extraction:', e);
+        
+        // Try to extract individual fields from truncated JSON
+        const transcriptMatch = content.match(/"transcript"\s*:\s*"([^"]*)/);
+        const statusMatch = content.match(/"status"\s*:\s*"([^"]*)/);
+        const summaryMatch = content.match(/"summary"\s*:\s*"([^"]*)/);
+        const reasonMatch = content.match(/"reason"\s*:\s*"([^"]*)/);
+        const campaignMatch = content.match(/"campaignName"\s*:\s*"([^"]*)/);
+        const publisherMatch = content.match(/"publisher"\s*:\s*"([^"]*)/);
+        const agentRespMatch = content.match(/"agent_response"\s*:\s*"([^"]*)/);
+        const custRespMatch = content.match(/"customer_response"\s*:\s*"([^"]*)/);
+        
+        if (transcriptMatch) analysis.transcript = transcriptMatch[1];
+        if (statusMatch) analysis.status = validateStatus(statusMatch[1]);
+        if (summaryMatch) analysis.summary = summaryMatch[1];
+        if (reasonMatch) analysis.reason = reasonMatch[1];
+        if (campaignMatch) analysis.campaignName = campaignMatch[1];
+        if (publisherMatch) analysis.publisher = publisherMatch[1];
+        if (agentRespMatch) analysis.agent_response = validateResponse(agentRespMatch[1]);
+        if (custRespMatch) analysis.customer_response = validateResponse(custRespMatch[1]);
+        
+        console.log('Partial extraction completed');
+      }
+    } else {
+      const errorText = await aiResponse.text();
+      console.error('AI API error:', aiResponse.status, errorText);
+      
+      if (aiResponse.status === 402) {
+        analysis.summary = 'AI credits exhausted - please add credits';
+        analysis.reason = 'Payment required';
+      } else if (aiResponse.status === 429) {
+        analysis.summary = 'Rate limited - try again later';
+        analysis.reason = 'Rate limit exceeded';
       }
     }
 
