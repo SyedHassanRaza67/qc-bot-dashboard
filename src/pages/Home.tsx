@@ -1,8 +1,15 @@
-import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Headphones, BarChart3, Brain, Shield, Check, Zap, Users, Crown } from "lucide-react";
+import { ArrowRight, Headphones, BarChart3, Brain, Shield, Check, Zap, Crown, Mail, MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeatureCard } from "@/components/FeatureCard";
+
+import portfolio1 from "@/assets/portfolio/1.png";
+import portfolio2 from "@/assets/portfolio/2.png";
+import portfolio3 from "@/assets/portfolio/3.png";
+import portfolio4 from "@/assets/portfolio/4.png";
+import portfolio5 from "@/assets/portfolio/5.png";
+
+const WHATSAPP_LINK = "https://wa.me/923109360056?text=Hi%2C%20I'm%20interested%20in%20Audio%20Analyzer%20AI";
 
 const features = [
   {
@@ -80,10 +87,17 @@ const pricingPlans = [
 ];
 
 const stats = [
-  { value: "10K+", label: "Active Users" },
   { value: "1M+", label: "Calls Analyzed" },
   { value: "99.9%", label: "Uptime" },
   { value: "50+", label: "Countries" },
+];
+
+const portfolioItems = [
+  { src: portfolio1, title: "Dashboard Overview", description: "Real-time call analytics & KPIs" },
+  { src: portfolio2, title: "Call Records", description: "Detailed call logs with transcriptions" },
+  { src: portfolio3, title: "Call Detail View", description: "Deep-dive into individual calls" },
+  { src: portfolio4, title: "Dialer Integrations", description: "VICIdial, Ringba & more" },
+  { src: portfolio5, title: "Upload & Analysis", description: "AI-powered audio processing" },
 ];
 
 const Home = () => {
@@ -91,40 +105,31 @@ const Home = () => {
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <section className="min-h-screen flex items-center justify-center relative overflow-hidden pt-20">
-        {/* Background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-info/5" />
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-info/10 rounded-full blur-3xl" />
 
         <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <h1 className="text-5xl md:text-7xl font-bold text-foreground mb-6 tracking-tight">
               Audio Analyzer AI
             </h1>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}>
             <p className="text-xl md:text-2xl text-primary font-medium mb-4">
               Empowering Businesses with Intelligent Voice Insights
             </p>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10">
-              Upload calls, analyze automatically, and extract key details using AI. 
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-4">
+              Upload calls, analyze automatically, and extract key details using AI.
               Transform your audio data into actionable business intelligence.
+            </p>
+            <p className="text-base text-muted-foreground max-w-2xl mx-auto mb-10">
+              Custom integrations with <span className="text-primary font-semibold">VICIdial</span>, <span className="text-primary font-semibold">Ringba</span> & other dialers.{" "}
+              <span className="text-primary font-semibold">Live Call QC</span> monitoring in real-time.
             </p>
           </motion.div>
 
@@ -135,13 +140,16 @@ const Home = () => {
             className="flex flex-col sm:flex-row gap-4 justify-center"
           >
             <Button asChild size="lg" className="text-base px-8 py-6 rounded-xl">
-              <Link to="/upload">
+              <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
                 Get Started
                 <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
+              </a>
             </Button>
             <Button asChild variant="outline" size="lg" className="text-base px-8 py-6 rounded-xl">
-              <Link to="/auth">Sign In</Link>
+              <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="mr-2 h-5 w-5" />
+                Book a Demo
+              </a>
             </Button>
           </motion.div>
         </div>
@@ -150,7 +158,7 @@ const Home = () => {
       {/* Stats Section */}
       <section className="py-16 px-6 bg-primary/5">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-3 gap-8">
             {stats.map((stat, index) => (
               <motion.div
                 key={stat.label}
@@ -178,9 +186,7 @@ const Home = () => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Powerful Features
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Powerful Features</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Everything you need to analyze and understand your audio recordings
             </p>
@@ -188,19 +194,13 @@ const Home = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature, index) => (
-              <FeatureCard
-                key={feature.title}
-                icon={feature.icon}
-                title={feature.title}
-                description={feature.description}
-                delay={index * 0.1}
-              />
+              <FeatureCard key={feature.title} icon={feature.icon} title={feature.title} description={feature.description} delay={index * 0.1} />
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
+      {/* Portfolio / Showcase Section */}
       <section className="py-24 px-6 bg-background">
         <div className="max-w-7xl mx-auto">
           <motion.div
@@ -210,9 +210,69 @@ const Home = () => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Simple, Transparent Pricing
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">See It In Action</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Explore our powerful dashboard, analytics, and integrations built for call centers
+            </p>
+          </motion.div>
+
+          {/* Top row: 2 large images */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {portfolioItems.slice(0, 2).map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="group relative overflow-hidden rounded-2xl border border-border shadow-sm hover:shadow-xl transition-all duration-300"
+              >
+                <img src={item.src} alt={item.title} className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-primary-foreground">{item.title}</h3>
+                    <p className="text-sm text-primary-foreground/80">{item.description}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Bottom row: 3 images */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {portfolioItems.slice(2).map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="group relative overflow-hidden rounded-2xl border border-border shadow-sm hover:shadow-xl transition-all duration-300"
+              >
+                <img src={item.src} alt={item.title} className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-primary-foreground">{item.title}</h3>
+                    <p className="text-sm text-primary-foreground/80">{item.description}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="py-24 px-6 bg-secondary/30">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Simple, Transparent Pricing</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Choose the plan that best fits your needs. Start free and scale as you grow.
             </p>
@@ -227,9 +287,7 @@ const Home = () => {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 className={`relative bg-card border rounded-2xl p-8 ${
-                  plan.popular 
-                    ? 'border-primary shadow-xl scale-105' 
-                    : 'border-border hover:border-primary/50'
+                  plan.popular ? "border-primary shadow-xl scale-105" : "border-border hover:border-primary/50"
                 } transition-all duration-300`}
               >
                 {plan.popular && (
@@ -258,12 +316,10 @@ const Home = () => {
                   ))}
                 </ul>
 
-                <Button
-                  asChild
-                  variant={plan.buttonVariant}
-                  className="w-full rounded-xl py-6"
-                >
-                  <Link to="/auth">{plan.buttonText}</Link>
+                <Button asChild variant={plan.buttonVariant} className="w-full rounded-xl py-6">
+                  <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
+                    {plan.buttonText}
+                  </a>
                 </Button>
               </motion.div>
             ))}
@@ -272,7 +328,7 @@ const Home = () => {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-24 px-6 bg-secondary/30">
+      <section className="py-24 px-6 bg-background">
         <div className="max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -281,12 +337,8 @@ const Home = () => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              How It Works
-            </h2>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get started in just three simple steps
-            </p>
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">How It Works</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">Get started in just three simple steps</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -303,9 +355,7 @@ const Home = () => {
                 transition={{ duration: 0.5, delay: index * 0.1 }}
                 className="relative text-center p-8"
               >
-                <div className="text-8xl font-bold text-primary/10 absolute top-0 left-1/2 -translate-x-1/2">
-                  {item.step}
-                </div>
+                <div className="text-8xl font-bold text-primary/10 absolute top-0 left-1/2 -translate-x-1/2">{item.step}</div>
                 <div className="relative z-10 pt-8">
                   <div className="w-16 h-16 mx-auto mb-6 bg-primary/10 rounded-2xl flex items-center justify-center">
                     <item.icon className="h-8 w-8 text-primary" />
@@ -316,6 +366,65 @@ const Home = () => {
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Contact / Book Demo Section */}
+      <section className="py-24 px-6 bg-secondary/30">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">Book a Free Demo</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-2">
+              See how Audio Analyzer AI can revolutionize your call center operations with custom integrations for{" "}
+              <span className="text-primary font-semibold">VICIdial</span>,{" "}
+              <span className="text-primary font-semibold">Ringba</span>, and other leading dialers.
+            </p>
+            <p className="text-base text-muted-foreground max-w-2xl mx-auto">
+              Get real-time <span className="font-semibold text-foreground">Live Call QC</span> monitoring, AI-powered transcription & sentiment analysis — all tailored to your workflow.
+            </p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="flex flex-col sm:flex-row gap-6 justify-center items-center"
+          >
+            <a
+              href="mailto:raxahassan67@gmail.com"
+              className="flex items-center gap-3 bg-card border border-border rounded-2xl px-8 py-5 hover:border-primary/50 hover:shadow-lg transition-all duration-300"
+            >
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Mail className="h-6 w-6 text-primary" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm text-muted-foreground">Email Us</div>
+                <div className="font-semibold text-foreground">raxahassan67@gmail.com</div>
+              </div>
+            </a>
+
+            <a
+              href={WHATSAPP_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 bg-card border border-border rounded-2xl px-8 py-5 hover:border-success/50 hover:shadow-lg transition-all duration-300"
+            >
+              <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center">
+                <Phone className="h-6 w-6 text-success" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm text-muted-foreground">WhatsApp</div>
+                <div className="font-semibold text-foreground">+92 310 9360056</div>
+              </div>
+            </a>
+          </motion.div>
         </div>
       </section>
 
@@ -332,17 +441,20 @@ const Home = () => {
               Ready to Transform Your Audio Data?
             </h2>
             <p className="text-lg text-muted-foreground mb-8">
-              Join thousands of businesses already using Audio Analyzer AI
+              Join businesses already using Audio Analyzer AI for smarter call center operations
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild size="lg" className="text-base px-8 py-6 rounded-xl">
-                <Link to="/auth">
+                <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
                   Start Free Trial
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
+                </a>
               </Button>
               <Button asChild variant="outline" size="lg" className="text-base px-8 py-6 rounded-xl">
-                <Link to="/dashboard">View Demo</Link>
+                <a href="mailto:raxahassan67@gmail.com">
+                  <Mail className="mr-2 h-5 w-5" />
+                  Email Us
+                </a>
               </Button>
             </div>
           </motion.div>
